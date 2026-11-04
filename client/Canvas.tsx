@@ -85,6 +85,7 @@ function CanvasInner({
 }: Parameters<typeof Canvas>[0]) {
   const [nodes, setNodes] = useState<SceneNode[]>([]),
     [expanded, setExpanded] = useState<string | null>(null),
+    [focusRequest, setFocusRequest] = useState(0),
     [search, setSearch] = useState(''),
     [searchOpen, setSearchOpen] = useState(false),
     [zoom, setZoom] = useState(initialViewport?.zoom ?? 1),
@@ -252,7 +253,7 @@ function CanvasInner({
     if (!expanded) return;
     const timer = setTimeout(() => focus([expanded]), 340);
     return () => clearTimeout(timer);
-  }, [expanded, focus]);
+  }, [expanded, focus, focusRequest]);
   const results = project.scenes.filter((s) =>
     s.title.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
   );
@@ -348,7 +349,15 @@ function CanvasInner({
                 <button
                   key={s.id}
                   onClick={() => {
-                    focus([s.id]);
+                    setExpanded(s.id);
+                    setNodes((old) =>
+                      old.map((node) => ({
+                        ...node,
+                        selected: node.id === s.id,
+                      })),
+                    );
+                    // Reuse the card-opening transition, even if this scene is already open.
+                    setFocusRequest((request) => request + 1);
                     setSearchOpen(false);
                   }}
                 >

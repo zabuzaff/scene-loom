@@ -71,3 +71,10 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Initial source scope: application, CLI, tests, build/dependency configuration, generated browser icons and their vector source, and project documentation. Personal game projects/assets/backups, runtime credentials, node_modules, build output, and QA captures stay outside the commit.
 - Final publication checks: current typecheck, all 10 integration tests, and formatting pass; the preceding After Hours build/lint and all 3 Chrome browser regressions pass. Intended files were inspected for accidentally included credentials with no findings.
 - Initial commit message: [FE] build agent-driven storyboard studio
+
+## Follow-up — search field and scene activation
+
+- Removed the heavy outline on the scene-search text field, as requested; the caret and search layout remain. Other controls retain their existing focus treatment.
+- Selecting a search result now selects and expands the scene through the same delayed animated focus path as canvas activation. Searching for an already-expanded scene refocuses it without collapsing it. The search panel closes after selection.
+- Verified production build/typecheck, lint, and all 3 Chrome browser regressions. The search regression checks expansion, selection, panel dismissal, matching camera placement after a normal canvas click, and refocusing an already-open scene. Capture: test-results/search-scene-focus.png.
+- Reviewed the resulting diff locally. Verification used temporary test projects; the owner's fish.exe project and running service were not used for tests. Owner reviewed this follow-up and authorized its commit and push to main.

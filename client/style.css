@@ -548,6 +548,10 @@ kbd {
   font-size: 12px;
   caret-color: var(--accent);
 }
+.search-input input:focus,
+.search-input input:focus-visible {
+  outline: none;
+}
 .search-input input::placeholder {
   color: var(--muted);
 }

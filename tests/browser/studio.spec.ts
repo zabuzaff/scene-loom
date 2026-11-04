@@ -204,13 +204,56 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       await page.unroute('**/api/projects');
     }
     await page.getByRole('button', { name: 'Find a scene' }).click();
-    await page.getByPlaceholder('Search scene titles…').fill('station');
+    const searchInput = page.getByPlaceholder('Search scene titles…');
+    await expect(searchInput).toBeFocused();
+    expect(
+      await searchInput.evaluate(
+        (input) => getComputedStyle(input).outlineStyle,
+      ),
+    ).toBe('none');
+    await searchInput.fill('station');
     await page
       .getByRole('button', { name: 'The station', exact: true })
       .click();
     await expect(
       page.getByRole('article', { name: 'The station', exact: true }),
     ).toBeVisible();
+    const station = page.getByRole('article', {
+      name: 'The station',
+      exact: true,
+    });
+    await expect(
+      station.getByRole('button', { name: 'Collapse The station' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    await expect(station.getByText('Keep the reveal slow.')).toBeVisible();
+    await expect(searchInput).not.toBeVisible();
+    await expect(
+      page.locator('.react-flow__node[data-id="station"]'),
+    ).toHaveClass(/selected/);
+    await page.waitForTimeout(850);
+    const searchBounds = await station.boundingBox();
+    await station.locator('.scene-image').click();
+    await expect(
+      station.getByRole('button', { name: 'Open The station' }),
+    ).toBeVisible();
+    await station.locator('.scene-image').click();
+    await page.waitForTimeout(850);
+    const clickBounds = await station.boundingBox();
+    expect(Math.abs(searchBounds!.x - clickBounds!.x)).toBeLessThan(2);
+    expect(Math.abs(searchBounds!.y - clickBounds!.y)).toBeLessThan(2);
+    // Search must refocus an already-open card after the user has zoomed out.
+    await page.getByRole('button', { name: 'Fit all scenes' }).click();
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: 'Find a scene' }).click();
+    await searchInput.fill('station');
+    await page
+      .getByRole('button', { name: 'The station', exact: true })
+      .click();
+    await page.waitForTimeout(850);
+    const refocusedBounds = await station.boundingBox();
+    expect(Math.abs(searchBounds!.x - refocusedBounds!.x)).toBeLessThan(2);
+    expect(Math.abs(searchBounds!.y - refocusedBounds!.y)).toBeLessThan(2);
+    await page.screenshot({ path: 'test-results/search-scene-focus.png' });
     await page.getByRole('button', { name: 'Fit all scenes' }).click();
     await page.screenshot({ path: 'test-results/studio-desktop.png' });
     expect(errors).toEqual([]);
