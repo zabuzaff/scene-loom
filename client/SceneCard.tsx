@@ -1,0 +1,139 @@
+import { memo } from 'react';
+import {
+  Handle,
+  Position,
+  useUpdateNodeInternals,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react';
+import { AnimatePresence, motion } from 'motion/react';
+import { ArrowUpRight, PencilLine, ChevronDown } from 'lucide-react';
+import type { SceneData } from '../shared/schema';
+export type CardData = {
+  scene: SceneData;
+  projectId: string;
+  number: number;
+  expanded: boolean;
+  recent: boolean;
+  toggle: (id: string) => void;
+  copy: (id: string, action: 'continue' | 'edit') => void;
+};
+export type SceneNode = Node<CardData, 'scene'>;
+export const SceneCard = memo(function SceneCard({
+  id,
+  data,
+  selected,
+}: NodeProps<SceneNode>) {
+  const update = useUpdateNodeInternals();
+  const image = (assetId: string, thumbnail = true) =>
+    `/api/projects/${data.projectId}/assets/${assetId}${thumbnail ? '?thumbnail=true' : ''}`;
+  return (
+    <article
+      className={`scene-card ${selected ? 'is-selected' : ''} ${data.expanded ? 'is-open' : ''} ${data.recent ? 'is-recent' : ''}`}
+      aria-label={data.scene.title}
+    >
+      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <div className="scene-image">
+        <img
+          src={image(data.scene.mainAssetId)}
+          alt={data.scene.title}
+          loading="lazy"
+          draggable={false}
+        />
+        <span className="scene-number">
+          {String(data.number).padStart(2, '0')}
+        </span>
+        {data.recent && <span className="scene-updated">Updated</span>}
+      </div>
+      <div className="scene-heading">
+        <h2>{data.scene.title}</h2>
+        <button
+          className="icon-button nodrag"
+          aria-label={`${data.expanded ? 'Collapse' : 'Open'} ${data.scene.title}`}
+          aria-expanded={data.expanded}
+          onClick={(e) => {
+            e.stopPropagation();
+            data.toggle(id);
+          }}
+        >
+          <ChevronDown size={17} className={data.expanded ? 'rotated' : ''} />
+        </button>
+      </div>
+      <AnimatePresence initial={false}>
+        {data.expanded && (
+          <motion.div
+            className="scene-detail nodrag nopan nowheel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            onUpdate={() => update(id)}
+            onAnimationComplete={() => update(id)}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="scene-detail-inner">
+              <p>{data.scene.description}</p>
+              {data.scene.notes && (
+                <section>
+                  <h3>Creative notes</h3>
+                  <p>{data.scene.notes}</p>
+                </section>
+              )}
+              {data.scene.supportingAssetIds.length > 0 && (
+                <section>
+                  <h3>Supporting visuals</h3>
+                  <div className="supporting-images">
+                    {data.scene.supportingAssetIds.map((a) => (
+                      <a
+                        key={a}
+                        href={image(a, false)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <img
+                          src={image(a)}
+                          alt={`Supporting visual for ${data.scene.title}`}
+                          loading="lazy"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                </section>
+              )}
+              <a
+                className="original-link"
+                href={image(data.scene.mainAssetId, false)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View full image <ArrowUpRight size={12} />
+              </a>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div className="scene-actions nodrag">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            data.copy(id, 'continue');
+          }}
+          title="Copy a prompt to continue from this scene"
+        >
+          <ArrowUpRight size={14} /> Continue from here
+        </button>
+        <button
+          aria-label={`Copy edit prompt for ${data.scene.title}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            data.copy(id, 'edit');
+          }}
+          title="Copy a prompt to revise this scene"
+        >
+          <PencilLine size={14} /> Edit
+        </button>
+      </div>
+      <Handle type="source" position={Position.Right} isConnectable={false} />
+    </article>
+  );
+});

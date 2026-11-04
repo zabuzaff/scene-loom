@@ -1,0 +1,54 @@
+{
+  "name": "scene-loom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "tsx server/index.ts --dev",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/index.ts",
+    "cli": "tsx cli/index.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test:browser": "playwright test",
+    "demo": "tsx scripts/demo.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "icons": "tsx scripts/icons.ts"
+  },
+  "dependencies": {
+    "@fastify/static": "10.1.9",
+    "@fontsource-variable/dm-sans": "5.3.0",
+    "@fontsource-variable/syne": "5.3.0",
+    "@xyflow/react": "12.12.1",
+    "fastify": "5.12.8",
+    "lucide-react": "1.68.0",
+    "motion": "14.9.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "eslint": "10.14.0",
+    "globals": "17.14.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vite": "8.3.5"
+  },
+  "overrides": {
+    "minimatch": "11.0.1"
+  }
+}
