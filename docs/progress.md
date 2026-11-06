@@ -1,5 +1,22 @@
 # Progress and continuation
 
+## Project Vision implementation — 2026-11-06
+
+- Owner authorized implementation of the scoped enhancement. Added optional validated Project Vision to version-1 projects; existing models/snapshots remain valid without it. `project.vision.set` uses existing atomic content batches, revisions, deduplication, snapshots, and notifications, synchronizing title to the chosen name.
+- Added new-project starter prompts, existing-project vision adoption, refinement, and a dedicated saved-vision first-scene resume prompt. Optional name/type/audience/experience/visual direction/features/boundaries/start fields support software projects beyond games. Prompts specify adaptive questions, naming collision research with limits, confirmed decisions versus assumptions, vision-first saving, and autonomous one-scene Edit/Continue defaults.
+- Added Project Vision panel with focus restoration, Escape/close, long-form sections, safe external reference links, naming notes, and live updates. Persistent new-project action never targets the selected project. Generalized game-only positioning in product/readme/metadata/guidance and documented the new operation and limits.
+- Integration coverage includes pre-vision models/snapshots, dry runs, atomic rejection, stale revisions, replay, restart persistence, combined vision/scene batches, and recovery. Chrome coverage includes prompt targets, existing-project adoption, first-scene resume, live refinement, panel focus, long content, narrow layout, reload, and vision publication during dragging alongside existing scene regressions.
+- Independent read-only review found a saved-vision resume path that restarted discovery; fixed with a dedicated prompt and clipboard regression. Follow-up review found no additional confirmed blocking defects. Narrow-header overlap found by rendered inspection was corrected.
+- Verification: build/typecheck, lint, formatting, 11 integration tests, and 4 Chrome regressions pass. Final strengthened drag/vision regression also passes (4 Chrome tests, 27.6 seconds). Screenshots under ignored test-results include vision-desktop.png, vision-laptop.png, and vision-narrow.png. All test services use isolated temporary data; no owner project content was changed.
+- Remaining human judgment: real external-agent game and web-system creative trials have not been performed. Prompt compliance, reference usefulness, naming quality, and illustrated scene quality depend on the chosen agent and tools. No guarantee of name availability or working software is implied. No commits, pushes, or deployment.
+
+## Enhancement scope — 2026-11-06
+
+- Prepared [Project Vision and creative starter scope](project-vision-scope.md) at the owner's request. Covers software projects beyond games, a low-effort starter template, external-agent discovery, persistent vision, first-scene publication, and vision-aware Edit/Continue prompts.
+- Includes boundaries, compatibility/recovery requirements, delivery sequence, acceptance checks, useful additions, and explicit deferrals. Scope preparation only; application implementation has not begun or been authorized by this checkpoint.
+- Added optional project naming: meaningful concept-aligned suggestions, preliminary web collision screening when no name is supplied, creator/delegated selection, and consistent project title/vision naming. Unchecked suggestions and legal-availability limits must be explicit.
+- Owner confirmed all five proposed additions as core scope: decisions versus assumptions, explicit exclusions, vision-first saving, one-scene defaults, and existing-project adoption. Deferred features remain deferred; no application changes made.
+
 ## Current checkpoint — 2026-11-05
 
 First usable version implemented, reviewed, and successfully tested by the owner with fish.exe. Source root is /Users/zaffran/vibed/scene-loom. The owner authorized the initial commit and push to the private GitHub repository zabuzaff/scene-loom. No deployment requested.
@@ -78,3 +95,14 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Selecting a search result now selects and expands the scene through the same delayed animated focus path as canvas activation. Searching for an already-expanded scene refocuses it without collapsing it. The search panel closes after selection.
 - Verified production build/typecheck, lint, and all 3 Chrome browser regressions. The search regression checks expansion, selection, panel dismissal, matching camera placement after a normal canvas click, and refocusing an already-open scene. Capture: test-results/search-scene-focus.png.
 - Reviewed the resulting diff locally. Verification used temporary test projects; the owner's fish.exe project and running service were not used for tests. Owner reviewed this follow-up and authorized its commit and push to main.
+
+## Harness neutrality — 2026-11-06
+
+- Owner clarified support for any compatible agent harness. Replaced remaining Codex-specific recovery/clipboard messaging and active product/setup/interface guidance with agent-neutral wording. Historical checkpoints retain their actual verification context; the installed Codex skill location remains an environment fact.
+- Shared copied-prompt guidance explicitly avoids requiring Codex-specific tools/skills, supports plain-text question options, and explains missing CLI access. README documents local execution/data-root requirements and external capability limits. Existing CLI/service architecture already has no Codex runtime dependency.
+
+## Review patches — 2026-11-06
+
+- Existing-project vision adoption now treats the current title as the supplied name, preserving it unless the creator explicitly requests renaming. Blank name fields no longer authorize new naming suggestions. A previously copied adoption prompt also preserves a vision saved by another session and asks for refinement direction.
+- The onboarding browser fixture uses a unique title and removes only its own project in `finally`, including on failure. Clipboard assertions cover the naming and existing-vision safeguards.
+- Verified production build/typecheck, lint, formatting, diff checks, and two consecutive runs of the targeted Chrome regression (2 passed, 7.9 seconds). Reviewed the patch locally; no commits or pushes.

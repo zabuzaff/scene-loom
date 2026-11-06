@@ -117,7 +117,7 @@ function CanvasInner({
       try {
         await navigator.clipboard.writeText(scenePrompt(info, p, s, action));
         notify(
-          `${action === 'continue' ? 'Continue' : 'Edit'} prompt copied. Paste it into Codex.`,
+          `${action === 'continue' ? 'Continue' : 'Edit'} prompt copied. Paste it into your agent.`,
         );
       } catch {
         notify('Clipboard unavailable. Allow clipboard access and try again.');

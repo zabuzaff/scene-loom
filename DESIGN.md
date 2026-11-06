@@ -27,7 +27,7 @@ Use the references for specific interaction and craft decisions, not as template
 
 ## Implemented canvas surface
 
-Mode: Operate with artwork-led exploration. Main task: read a complete game flow, inspect one scene, and carry a targeted next instruction back to Codex.
+Mode: Operate with artwork-led exploration. Main task: read a software storyboard, inspect one scene, and carry a targeted next instruction back to the creator’s preferred agent.
 
 - Typography: locally hosted Syne Variable at weight 800 for the wordmark and welcome headline, 700 for canvas/help headings, and 600 for scene titles. Its widening at heavier weights gives the requested expressive identity without using effects or novelty lettering in long text. DM Sans Variable handles controls, descriptions, notes, and connection labels, carrying forward the readable UI voice in the approved preview.
 - Tokens live in client/tokens.css: ground #101215, header #15181c, scene surface #20242b, raised surface #1b1f26, primary text #edf0f3, secondary text #a2a9b4, pale blue accent #abbcff, and borders #343a45. Supporting surfaces and interactive states use the same central token set.
@@ -48,3 +48,7 @@ The browser theme matches the header (#15181c), with application-name and descri
 ## After Hours verification
 
 Rendered inspection used isolated, disposable visual QA data, never the owner's game project. Captures at /private/tmp/scene-loom-after-hours-qa include empty-desktop.png, canvas-desktop.png, scene-open-laptop.png, canvas-compact.png, and header-narrow.png. Actual loaded fonts were verified as Syne Variable and DM Sans Variable. Measured text contrast: primary text on cards 13.6:1 and secondary text on the canvas 7.9:1. The 390px header fits within the viewport. Core browser regressions pass. See progress.md for final review status.
+
+## Project Vision surface
+
+Mode: Read within the studio's Operate workspace. The project-title area exposes Project Vision; the project picker exposes a persistent Copy new project starter prompt action. An accessible nonmodal side panel uses the existing raised surface, close/Escape behavior, focus restoration, and scrollable long-form content. The canvas remains mounted beneath it. Confirmed decisions, assumptions, exclusions, original intent, references, and naming research are separate readable sections. Missing vision shows an adoption prompt; a saved vision without scenes remains readable. Help and vision panels are mutually exclusive. New-project prompts never carry an existing project target.

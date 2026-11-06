@@ -18,7 +18,14 @@ import {
 const Canvas = lazy(() =>
   import('./Canvas').then((module) => ({ default: module.Canvas })),
 );
-import { api, starterPrompt, type AgentInfo } from './api';
+import {
+  api,
+  starterPrompt,
+  visionPrompt,
+  firstScenePrompt,
+  type AgentInfo,
+} from './api';
+import { VisionPanel } from './VisionPanel';
 import type {
   ProjectData,
   ViewportData,
@@ -38,7 +45,9 @@ export function App() {
     [connected, setConnected] = useState(false),
     [loading, setLoading] = useState(true),
     [recent, setRecent] = useState<string[]>([]),
-    [help, setHelp] = useState(false);
+    [help, setHelp] = useState(false),
+    [visionOpen, setVisionOpen] = useState(false);
+  const closeVision = useCallback(() => setVisionOpen(false), []);
   useEffect(() => {
     document.title = project
       ? `${project.title} — Scene Loom`
@@ -147,11 +156,17 @@ export function App() {
       setError(e.message);
     });
   }, [active, info, refresh]);
-  async function copyStart() {
+  async function copyStart(existing = false, refine = false) {
     if (!info) return;
     try {
-      await navigator.clipboard.writeText(starterPrompt(info, project?.id));
-      notify('Starting prompt copied. Paste it into Codex.');
+      await navigator.clipboard.writeText(
+        refine && project
+          ? visionPrompt(info, project)
+          : existing && project?.vision
+            ? firstScenePrompt(info, project)
+            : starterPrompt(info, existing ? project?.id : undefined),
+      );
+      notify('Prompt copied. Paste it into your agent.');
     } catch {
       notify('Clipboard unavailable. Allow clipboard access and try again.');
     }
@@ -209,12 +224,33 @@ export function App() {
                 </button>
               ))}
               {!projects.length && <p>No projects yet.</p>}
+              <button
+                disabled={!info}
+                onClick={() => {
+                  void copyStart();
+                  setPicker(false);
+                }}
+              >
+                Copy new project starter prompt <ArrowUpRight size={15} />
+              </button>
               <div className="project-menu-note">
-                Projects are created through Codex.
+                Projects are created through your agent.
               </div>
             </div>
           )}
         </div>
+        {project && (
+          <button
+            className="vision-toggle"
+            aria-expanded={visionOpen}
+            onClick={() => {
+              setVisionOpen((v) => !v);
+              setHelp(false);
+            }}
+          >
+            Project Vision
+          </button>
+        )}
         <span className="header-canvas-label">Canvas</span>
         <div className="header-right">
           <span className={`connection-status ${connected ? 'online' : ''}`}>
@@ -224,7 +260,10 @@ export function App() {
           <button
             className="icon-button help-toggle"
             aria-label="How to use Scene Loom"
-            onClick={() => setHelp((v) => !v)}
+            onClick={() => {
+              setHelp((v) => !v);
+              setVisionOpen(false);
+            }}
           >
             <CircleHelp size={19} />
           </button>
@@ -239,7 +278,7 @@ export function App() {
           : needs recovery.{' '}
           {projects.some((p) => p.status === 'ready')
             ? 'Other projects remain available.'
-            : 'Use Codex to recover your projects or start a new one.'}
+            : 'Use your agent to recover your projects or start a new one.'}
         </div>
       )}
       {error && (
@@ -291,25 +330,38 @@ export function App() {
           </div>
           <h1>
             {project
-              ? 'Give this world its first scene.'
-              : 'Every world starts\nwith a scene.'}
+              ? project.vision
+                ? 'Your vision is ready. Make it visible.'
+                : 'Give this project its first scene.'
+              : 'Every idea starts\nwith a scene.'}
           </h1>
           <p>
-            Bring an idea to Codex. Your agent builds the storyboard.
+            Bring an idea to your agent. Your agent builds the storyboard.
             <br />
             Come here to see how it all connects.
           </p>
           <button
             className="primary-button"
             disabled={!info}
-            onClick={() => void copyStart()}
+            onClick={() => void copyStart(!!project)}
           >
-            Copy a starting prompt <ArrowUpRight size={17} />
+            {project?.vision
+              ? 'Copy first scene prompt'
+              : 'Copy a starting prompt'}{' '}
+            <ArrowUpRight size={17} />
           </button>
           <span className="empty-footnote">
-            One game. One canvas. Room for every possibility.
+            One project. One canvas. Room for every possibility.
           </span>
         </section>
+      )}
+      {visionOpen && project && (
+        <VisionPanel
+          key={project.id}
+          project={project}
+          close={closeVision}
+          copy={() => void copyStart(true, !!project.vision)}
+        />
       )}
       <AnimatePresence>
         {notice && (
@@ -351,7 +403,7 @@ export function App() {
               </button>
             </div>
             <p>
-              Develop the story in Codex.
+              Develop your project with your agent.
               <br />
               See it take shape here.
             </p>
@@ -359,8 +411,8 @@ export function App() {
               <li>
                 <strong>Prompt your agent</strong>
                 <span>
-                  Describe a game moment. The agent supplies images, details,
-                  and connections.
+                  Describe a screen, workflow, or gameplay moment. The agent
+                  supplies images, details, and connections.
                 </span>
               </li>
               <li>
@@ -373,8 +425,8 @@ export function App() {
               <li>
                 <strong>Keep the story moving</strong>
                 <span>
-                  Copy Continue or Edit from a card, paste into Codex, and add
-                  your direction.
+                  Copy Continue or Edit from a card, paste into your agent, and
+                  optionally add your direction.
                 </span>
               </li>
             </ol>

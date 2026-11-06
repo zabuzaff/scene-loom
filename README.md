@@ -1,8 +1,8 @@
 # Scene Loom
 
-A local, agent-maintained storyboard studio for game development. Discuss ideas in Codex; agents populate and revise an image-led canvas that you explore visually.
+A local, agent-maintained storyboard studio for software projects. Discuss ideas in your preferred agent harness; agents populate and revise an image-led canvas that you explore visually.
 
-The first usable version is implemented: one canvas per game project, image cards with animated details, branches and loops, persisted arrangement, targeted prompt copying, live updates, and an agent CLI with validated batches and local recovery.
+The first usable version is implemented: one canvas per software project, image cards with animated details, branches and loops, persisted arrangement, targeted prompt copying, live updates, and an agent CLI with validated batches and local recovery.
 
 ## Run locally
 
@@ -14,7 +14,7 @@ npm run build
 npm start
 ```
 
-Open http://127.0.0.1:4318. No account or AI API key is needed. The studio starts empty; use **Copy a starting prompt** and paste it into Codex to create your first project.
+Open http://127.0.0.1:4318. No account or AI API key is needed. The studio starts empty; use **Copy a starting prompt** and paste it into your agent to create your first project.
 
 For development, use `npm run dev` instead. It serves source through Vite on the same local address. Refresh after client edits; restart after server edits.
 
@@ -62,4 +62,12 @@ Browser tests use installed Google Chrome, ports 4319/4320, and temporary data. 
 - [Progress and remaining work](docs/progress.md)
 - [Verification evidence](docs/verification.md)
 
-Scene Loom has no dependency on fish.exe or any other game repository. No cloud deployment is part of this version.
+Scene Loom has no dependency on fish.exe or any other software repository. No cloud deployment is part of this version.
+
+## Develop a project vision
+
+Use **Copy new project starter prompt** in the project menu, or the empty-studio starting prompt. Paste it into your agent and fill in your rough idea; the other fields are optional. The agent develops the concept, asks a few questions, saves a Project Vision, and generates the first illustrated scene when its tools allow. **Project Vision** opens the saved brief and a prompt to define or refine it. Edit and Continue can take your direction or use agent judgment when left blank. Research and image generation require capabilities in your external agent; naming web checks are preliminary, not legal clearance. See [the enhancement scope](docs/project-vision-scope.md).
+
+### Agent and harness compatibility
+
+Scene Loom uses a local CLI and versioned JSON schemas, not a particular AI provider. Use any agent harness that can execute the CLI on the machine running the studio (with the same data directory). A remote agent needs an explicitly configured way to execute locally; copying a prompt alone does not provide machine access. Browsing and image generation are optional external capabilities: without image generation/import access, an agent can still save a vision but cannot publish an imageless scene. Plain-text questions work without harness-specific interactive controls.

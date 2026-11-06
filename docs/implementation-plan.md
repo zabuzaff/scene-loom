@@ -2,7 +2,7 @@
 
 ## First useful outcome
 
-An agent creates a complete image-backed branching storyboard from Codex; the owner opens it locally, reads the flow, expands scenes, moves cards, and copies targeted follow-up prompts. The agent revises a card and the viewer updates without losing the owner's arrangement.
+An agent creates a complete image-backed branching storyboard from an external agent harness; the owner opens it locally, reads the flow, expands scenes, moves cards, and copies targeted follow-up prompts. The agent revises a card and the viewer updates without losing the owner's arrangement.
 
 ## Proposed architecture
 
@@ -60,7 +60,7 @@ Exit: verification below passes, docs cover setup and agent use, and rendered sc
 - Repeated request IDs do not duplicate scenes. Stale content revisions produce a clear conflict and no partial change.
 - Simultaneous agent edits and user drags preserve both intended content and latest positions. Dragging while notifications arrive remains stable.
 - Restart the service and browser: images, details, graph, positions, and saved viewport survive. Work offline after images are imported.
-- Copy both prompts and use them from a separate Codex chat: the documented CLI location and project IDs resolve without relying on this conversation.
+- Copy both prompts and use them from a separate agent session: the documented CLI location and project IDs resolve without relying on this conversation.
 - Updates appear without manual refresh; reconnect after a stopped service fetches current state. Report connection/save errors visibly.
 - Automated integration tests cover atomic batches, asset validation, conflict behavior, persistence, and backup restoration. Browser tests cover opening, dragging, copy text, and live refresh where they provide regression value.
 - Inspect the rendered UI with representative imagery at a normal laptop window. Confirm details remain readable, arrows follow expanded cards, buttons do not trigger dragging, and images do not stretch during animation.

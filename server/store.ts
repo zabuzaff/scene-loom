@@ -374,6 +374,11 @@ export class Store extends EventEmitter {
       const next: State = structuredClone(p);
       const affected = new Set<string>();
       for (const [index, op] of batch.operations.entries()) {
+        if (op.type === 'project.vision.set') {
+          next.vision = op.vision;
+          next.title = op.vision.name;
+          continue;
+        }
         const sceneOp = op.type.startsWith('scene.');
         const list = (sceneOp ? next.scenes : next.connections) as Array<
           Record<string, unknown> & { id: string }

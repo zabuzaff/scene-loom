@@ -34,6 +34,44 @@ export const Asset = z.strictObject({
   height: z.number(),
   originalFilename: z.string(),
 });
+export const ProjectVision = z.strictObject({
+  name: z.string().trim().min(1).max(200),
+  nameMeaning: Text,
+  nameStatus: z.enum(['confirmed', 'provisional']),
+  originalIdea: Text,
+  summary: Text,
+  purpose: Text,
+  audience: Text,
+  projectType: z.string().max(200),
+  platforms: Text,
+  coreExperience: Text,
+  essentialFeatures: Text,
+  exclusions: Text,
+  creativePillars: Text,
+  visualDirection: Text,
+  constraints: Text,
+  confirmedDecisions: Text,
+  assumptions: Text,
+  openQuestions: Text,
+  references: z
+    .array(
+      z.strictObject({
+        url: z
+          .url()
+          .refine(
+            (value) => /^https?:\/\//.test(value),
+            'Use an HTTP or HTTPS URL',
+          ),
+        relevance: z.string().max(2000),
+      }),
+    )
+    .max(50),
+  namingCheck: z.strictObject({
+    checkedAt: z.iso.date().optional(),
+    notes: Text,
+  }),
+});
+export type ProjectVisionData = z.infer<typeof ProjectVision>;
 export const Project = z.strictObject({
   schemaVersion: z.literal(1),
   id: Id,
@@ -41,6 +79,7 @@ export const Project = z.strictObject({
   contentRevision: z.number().int().nonnegative(),
   layoutRevision: z.number().int().nonnegative(),
   updatedAt: z.string(),
+  vision: ProjectVision.optional(),
   scenes: z.array(Scene),
   connections: z.array(Connection),
   assets: z.record(Id, Asset),
@@ -59,6 +98,10 @@ const ConnectionPatch = Connection.omit({ id: true })
     'Provide at least one changed field',
   );
 export const Operation = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('project.vision.set'),
+    vision: ProjectVision,
+  }),
   z.strictObject({
     type: z.literal('scene.create'),
     scene: Scene,

@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import sharp from 'sharp';
+import { visionFixture } from '../vision-fixture';
 
 test('real CLI ingestion → canvas → copy prompts → drag + live edit → persisted state', async ({
   page,
@@ -123,6 +124,10 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       expectedContentRevision: 1,
       operations: [
         {
+          type: 'project.vision.set',
+          vision: { ...visionFixture, name: title },
+        },
+        {
           type: 'scene.patch',
           id: 'arrival',
           changes: { title: 'Arrival revised' },
@@ -140,6 +145,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     const state = cli('project', 'read', id).data;
     expect(state.positions.arrival.x).not.toBe(0);
     expect(state.scenes[0].title).toBe('Arrival revised');
+    expect(state.vision.summary).toBe(visionFixture.summary);
     await page.reload();
     await expect(
       page.getByRole('article', { name: 'Arrival revised', exact: true }),
@@ -553,5 +559,141 @@ test('an unreadable selected project falls back to healthy projects and reports 
     await rm(join(root, 'projects', id), { recursive: true, force: true });
     await rm(join(root, 'projects', healthy), { recursive: true, force: true });
     await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test('project vision onboarding, safe prompt targets, live refinement and responsive panel', async ({
+  page,
+}) => {
+  const id = `vision_${randomUUID()}`;
+  const title = `Vision onboarding ${id}`;
+  const cliInput = (args: string[], input?: unknown) =>
+    JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          'node_modules/tsx/dist/cli.mjs',
+          'cli/index.ts',
+          ...args,
+          ...(input ? ['-'] : []),
+        ],
+        {
+          encoding: 'utf8',
+          input: input ? JSON.stringify(input) : undefined,
+          env: {
+            ...process.env,
+            SCENE_LOOM_DATA_DIR: '/private/tmp/scene-loom-browser-tests',
+          },
+        },
+      ),
+    );
+  try {
+    cliInput(['project', 'create'], { id, title });
+    await page.goto('/');
+    await page.locator('.project-trigger').first().click();
+    await page.getByRole('button', { name: `${title} 0 scenes` }).click();
+    const trigger = page.getByRole('button', {
+      name: 'Project Vision',
+      exact: true,
+    });
+    await trigger.click();
+    const panel = page.getByRole('complementary', { name: 'Project Vision' });
+    await expect(
+      panel.getByText('No vision yet.', { exact: false }),
+    ).toBeVisible();
+    await panel
+      .getByRole('button', { name: 'Copy define vision prompt' })
+      .click();
+    let prompt = await page.evaluate(() => navigator.clipboard.readText());
+    expect(prompt).toContain(`existing project ${id}`);
+    expect(prompt).toContain('PROJECT NAME (optional)');
+    expect(prompt).toContain(
+      'Treat the current project title as the supplied project name',
+    );
+    expect(prompt).toContain(
+      'a blank PROJECT NAME field does not authorize new naming suggestions',
+    );
+    expect(prompt).toContain(
+      'If a vision already exists when you read current state, preserve it',
+    );
+    expect(prompt).toContain('up to three consequential questions');
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await page.locator('.project-trigger').first().click();
+    await page
+      .getByRole('button', { name: 'Copy new project starter prompt' })
+      .click();
+    prompt = await page.evaluate(() => navigator.clipboard.readText());
+    expect(prompt).toContain('Create a NEW software project');
+    expect(prompt).not.toContain(id);
+    cliInput(['project', 'apply', id], {
+      schemaVersion: 1,
+      projectId: id,
+      requestId: 'vision_first',
+      expectedContentRevision: 0,
+      operations: [
+        {
+          type: 'project.vision.set',
+          vision: { ...visionFixture, name: `Job Lantern ${id.slice(-6)}` },
+        },
+      ],
+    });
+    await page.getByRole('button', { name: 'Copy first scene prompt' }).click();
+    const resume = await page.evaluate(() => navigator.clipboard.readText());
+    expect(resume).toContain('Resume from the saved Project Vision');
+    expect(resume).not.toContain('MAIN IDEA (required)');
+    await trigger.click();
+    await expect(
+      panel.getByRole('heading', { name: 'Confirmed decisions' }),
+    ).toBeVisible();
+    await expect(
+      panel.getByText(visionFixture.summary, { exact: true }),
+    ).toBeVisible();
+    await panel
+      .getByRole('button', { name: 'Copy refine vision prompt' })
+      .click();
+    prompt = await page.evaluate(() => navigator.clipboard.readText());
+    expect(prompt).toContain(`(${id})`);
+    expect(prompt).toContain('Update the vision only');
+    cliInput(['project', 'apply', id], {
+      schemaVersion: 1,
+      projectId: id,
+      requestId: 'vision_second',
+      expectedContentRevision: 1,
+      operations: [
+        {
+          type: 'project.vision.set',
+          vision: { ...visionFixture, summary: 'A'.repeat(600) },
+        },
+      ],
+    });
+    await expect(
+      panel.getByText('A'.repeat(600), { exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: 'test-results/vision-desktop.png' });
+    await page.setViewportSize({ width: 900, height: 700 });
+    await page.screenshot({ path: 'test-results/vision-laptop.png' });
+    expect(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+      true,
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: 'test-results/vision-narrow.png' });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Close Project Vision' }).click();
+    await page.reload();
+    await trigger.click();
+    await expect(
+      panel.getByText('A'.repeat(600), { exact: true }),
+    ).toBeVisible();
+  } finally {
+    await rm(join('/private/tmp/scene-loom-browser-tests', 'projects', id), {
+      recursive: true,
+      force: true,
+    });
   }
 });

@@ -39,3 +39,10 @@ The current suite has 10 integration tests and 3 Chrome browser tests. New cases
 ## After Hours visual update
 
 Theme selection and expressive type were implemented after owner approval. Syne Variable and DM Sans Variable are locally hosted and verified loaded in Chrome. Empty, overview, expanded-card, 900px compact, and 390px header captures live at /private/tmp/scene-loom-after-hours-qa. Computed colors match the approved preview; primary card text measured 13.6:1 contrast and secondary canvas text 7.9:1. The isolated QA fixture was removed after capture, and the owner's active fish.exe session was not used for verification. Existing browser regressions pass with the new font metrics.
+
+## Project Vision enhancement — 2026-11-06
+
+- Production build and typecheck, lint, formatting, 11 integration tests, and 4 Chrome browser tests pass. Final browser run: 27.6 seconds; isolated temporary services only.
+- New integration checks cover old models and snapshots, strict vision validation, atomic combined batches, conflicts, idempotency, restart persistence, and restore. Browser checks cover copied prompt targets, naming/discovery guidance, first-scene resume, live vision updates, panel close/Escape/focus, persistence, long text, and narrow layout. Existing drag regression now publishes a vision in the same live batch as a scene update while dragging, verifying retained movement and vision content.
+- Rendered inspection: test-results/vision-desktop.png, vision-laptop.png, and vision-narrow.png. Inspected desktop and fresh narrow captures; corrected header overlap and retained readable scrollable content. Captures use a non-game fixture and deliberate 600-character unbroken content to stress wrapping. Art quality is not evaluated by these fixtures.
+- Independent read-only source review cleared the saved-vision resume fix and agent documentation; no additional confirmed blockers. Full external-agent game/web creative trials remain unperformed and require human assessment of actual generated material and naming suggestions.

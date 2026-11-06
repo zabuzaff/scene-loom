@@ -1,6 +1,6 @@
 # Agent interface
 
-Scene Loom is fed by agents from Codex chats. Use the CLI and versioned JSON schemas; do not edit project files directly. Image generation happens externally with whatever tools the agent has available.
+Scene Loom is fed by external agents through any harness that can run its local CLI. No Codex-specific API, plugin, or chat session is required. Use the CLI and versioned JSON schemas; do not edit project files directly. Image generation happens externally with whatever tools the agent has available.
 
 ## Connect and discover
 
@@ -135,3 +135,49 @@ If `project.json` is corrupt, backup listing still works. Explicit corrupt-state
 This mode works only when current JSON/schema is unreadable, validates the selected backup, preserves damaged bytes in `recovery/`, and assigns fresh revisions that invalidate stale clients. It cannot bypass revision checks on a healthy project. Inspect the selected backup and owner intent before an intentional rollback; never silently undo creative work.
 
 For an executable branching example, run `npm run demo -- IMAGE1 IMAGE2 IMAGE3 IMAGE4` with four absolute local image paths while the service runs. It uses this CLI to create an explicitly labeled example project.
+
+## Project Vision and creative starter
+
+Scene Loom supports software projects beyond games: websites, web systems, mobile/desktop apps, and developer tools. Scenes represent screens, workflow steps, interactions, or gameplay moments. The studio's New project action copies a starter template with a required rough idea and optional name, type, audience, experience, visual direction, must-haves, boundaries, and starting point. Research and generation happen in the external agent, not the studio.
+
+Discover the complete vision schema with `schema project` or `schema batch`. Existing version-1 projects and backups may omit `vision`; no migration or compulsory setup is needed. New optional fields remain strictly validated. A batch operation replaces the complete vision and synchronizes the project title to its name:
+
+```json
+{
+  "type": "project.vision.set",
+  "vision": {
+    "name": "Working project name",
+    "nameMeaning": "Why this name fits",
+    "nameStatus": "provisional",
+    "originalIdea": "The creator's original words",
+    "summary": "A concise developed concept",
+    "purpose": "What it achieves",
+    "audience": "Who uses it",
+    "projectType": "Web system",
+    "platforms": "Desktop and mobile browsers",
+    "coreExperience": "The main user journey or loop",
+    "essentialFeatures": "Essential scope",
+    "exclusions": "What it will not include",
+    "creativePillars": "Principles guiding creative choices",
+    "visualDirection": "Aesthetic and tone",
+    "constraints": "Relevant limits",
+    "confirmedDecisions": "Creator-confirmed requirements",
+    "assumptions": "Unconfirmed agent choices",
+    "openQuestions": "Remaining questions",
+    "references": [],
+    "namingCheck": {
+      "notes": "Unchecked working name; no availability claim"
+    }
+  }
+}
+```
+
+All fields shown are required. Text fields accept up to 50,000 characters except `name` and `projectType` (200); references accept up to 50 HTTP(S) URLs with relevance notes (2,000 characters). `namingCheck.checkedAt` is an optional ISO date (`YYYY-MM-DD`). Use `nameStatus: "confirmed"` for a creator-confirmed name; delegated agent choices may remain `provisional`. References store naming research links as well as design inspiration, with relevance notes identifying their purpose. The existing 4 MB batch limit applies.
+
+Use the normal `project apply` command with a unique request ID and current content revision. Dry runs, deduplication, conflicts, atomicity, notifications, and recovery snapshots work exactly as for scenes. Vision-only mutations return no scene IDs in `affectedIds`. They preserve layout and viewport. Vision and scenes can also be published in one atomic batch after importing images.
+
+For discovery, ask a few consequential questions with concrete suggested answers, a recommendation, and free-text/delegate options. Preserve original intent and distinguish confirmed decisions from assumptions. If no name is supplied, develop meaningful expressive options and screen the web for obvious exact/near-name collisions with established related products when browsing is available. Record links, date, and limits; never claim legal availability from web searching.
+
+Save the vision before generating the first image so interrupted work is resumable. If no scenes exist, generate one representative illustrated first scene without another initiation request after discovery. Existing-project vision adoption preserves existing scenes. If required tools are unavailable, report the limitation and retain completed work; never publish imageless scenes.
+
+Edit/Continue prompts read current vision and content. Blank direction delegates creative judgment: improve the selected scene deliberately or add one useful connected next scene, respectively. Respect confirmed foundations and exclusions, preserve unrelated content/positions, and reuse images for appropriate text-only changes. Refine vision updates only the brief unless scene changes are explicitly requested; explain possible scene mismatches in the external conversation.

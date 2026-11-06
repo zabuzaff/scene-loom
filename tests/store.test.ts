@@ -477,3 +477,100 @@ test('library listing exposes damaged projects without hiding healthy projects',
     assert.equal((await store.read('test')).title, 'Test world');
   }
 });
+
+test('vision batches preserve old models, publish atomically, replay, survive restart and restore snapshots', async (t) => {
+  const { visionFixture } = await import('./vision-fixture.js');
+  const { store, root, batch, scene } = await fixture(t);
+  assert.equal((await store.read('test')).vision, undefined);
+  const update = batch([{ type: 'project.vision.set', vision: visionFixture }]);
+  await store.apply(update, true);
+  assert.equal((await store.read('test')).vision, undefined);
+  const result = await store.apply(update);
+  assert.deepEqual(await store.apply(update), result);
+  let current = await new Store(root).read('test');
+  assert.deepEqual(current.vision, visionFixture);
+  assert.equal(current.title, visionFixture.name);
+  assert.equal(current.layoutRevision, 0);
+  await assert.rejects(
+    store.apply(
+      batch(
+        [{ type: 'project.vision.set', vision: visionFixture }],
+        0,
+        'stale',
+      ),
+    ),
+    hasCode('CONTENT_CONFLICT'),
+  );
+  await assert.rejects(
+    store.apply(
+      batch(
+        [
+          {
+            type: 'project.vision.set',
+            vision: { ...visionFixture, name: 'Should not persist' },
+          },
+          {
+            type: 'scene.create',
+            scene: { ...scene('bad'), mainAssetId: 'missing' },
+          },
+        ],
+        1,
+        'invalid',
+      ),
+    ),
+  );
+  await assert.rejects(
+    store.apply(
+      batch(
+        [
+          {
+            type: 'project.vision.set',
+            vision: {
+              ...visionFixture,
+              references: [{ url: 'javascript:alert(1)', relevance: '' }],
+            },
+          },
+        ],
+        1,
+        'unsafe',
+      ),
+    ),
+  );
+  current = await store.read('test');
+  assert.equal(current.title, visionFixture.name);
+  assert.equal(current.contentRevision, 1);
+  await store.apply(
+    batch(
+      [
+        {
+          type: 'project.vision.set',
+          vision: { ...visionFixture, summary: 'Updated summary' },
+        },
+        { type: 'scene.create', scene: scene('first') },
+      ],
+      1,
+      'combined',
+    ),
+  );
+  const backup = (await store.backups('test'))[0];
+  await store.restore('test', {
+    backupId: backup,
+    expectedContentRevision: 2,
+    expectedLayoutRevision: 0,
+  });
+  current = await store.read('test');
+  assert.equal(current.vision?.summary, visionFixture.summary);
+  assert.equal(current.scenes.length, 0);
+  const oldBackup = (await store.backups('test')).find(
+    (name) => name !== backup && name.includes('_0_'),
+  );
+  // The original pre-vision snapshot must still decode through the normal restore path.
+  const backups = await store.backups('test');
+  const original = oldBackup ?? backups[backups.length - 1];
+  await store.restore('test', {
+    backupId: original,
+    expectedContentRevision: current.contentRevision,
+    expectedLayoutRevision: current.layoutRevision,
+  });
+  assert.equal((await store.read('test')).vision, undefined);
+});
