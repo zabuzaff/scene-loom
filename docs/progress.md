@@ -137,3 +137,17 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Development now distinguishes new or unsynced storyboard references from an existing synced baseline. The prompt encourages original visual decisions for new work while carrying forward confirmed requirements. The Chrome clipboard regression passed with both cases covered in the copied instructions.
 
 - Review follow-up: resync instructs the agent to record per-scene repository verification in notes, including for scenes whose images already match. Development checks that evidence or follows explicit creator direction. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
+
+- Development defaults to working end-to-end implementation even when storyboard material uses demo or prototype wording. Demo-only work requires explicit current creator direction. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
+
+- Weekbeam review showed that opening all storyboard images and using the full board as a product brief anchored the implementation to its mockups. Development now extracts goals and confirmed requirements, leaves unverified images unopened by default, treats provisional visual prose as illustrative, and records an independent design direction before coding. Verified scenes serve as a baseline within the scope supported by evidence. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
+
+- Storyboard creation and revision prompts now default to paper wireframes for interface projects and game-style illustrations for gameplay. The interface guidance calls for black lines on white, simple layout blocks and labels, and imagery placeholders. Project Vision carries provisional art direction separately. Build, lint, formatting, and all four Chrome regressions passed, with clipboard checks for Starter, First Scene, Edit, and Continue.
+
+## Text-only planning scenes
+
+- Planned interface scenes now default to text with user goals, actions, system responses, and relevant states. Sketches are available on request. Gameplay illustrations remain the default when available. Resync can attach a verified screenshot to the same card.
+- The scene model accepts an omitted or null main image. Non-null image references still pass existing asset validation. Text cards show a description preview, retain scene actions, and offer Mesh Foundry handoff once a main image is attached.
+- Build, lint, formatting, 12 integration tests, and all four Chrome tests passed. Browser coverage verifies the text card, later image attachment during a nearby drag, and prompt defaults. Inspected the rendered mixed board. Independent review found outdated illustration wording, which was corrected and checked against the generated starter prompt.
+
+- Review follow-up: resync now instructs the agent to attach a verified screenshot to scenes with missing, outdated, or speculative imagery. It publishes the screenshot reference and verification notes together and marks outdated imagery unverified if capture is unavailable. Build, lint, formatting, and the targeted Chrome regression passed.

@@ -266,6 +266,28 @@ a {
     0 0 0 1px var(--accent),
     0 8px 24px #0004;
 }
+.scene-text-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 18px 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.scene-text-meta span + span {
+  color: var(--accent);
+}
+.scene-text-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--soft);
+  line-height: 1.5;
+  margin: 0 18px 16px;
+}
 .scene-image {
   height: 182px;
   position: relative;

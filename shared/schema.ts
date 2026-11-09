@@ -16,7 +16,7 @@ export const Scene = z.strictObject({
   title: z.string().trim().min(1).max(200),
   description: Text,
   notes: Text,
-  mainAssetId: Id,
+  mainAssetId: Id.nullable().optional(),
   supportingAssetIds: z.array(Id).max(30),
 });
 export const Connection = z.strictObject({

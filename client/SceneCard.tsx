@@ -26,6 +26,8 @@ export const SceneCard = memo(function SceneCard({
   selected,
 }: NodeProps<SceneNode>) {
   const update = useUpdateNodeInternals();
+  const { mainAssetId, description } = data.scene;
+  const showAssetAction = data.meshFoundryEnabled && !!mainAssetId;
   const image = (assetId: string, thumbnail = true) =>
     `/api/projects/${data.projectId}/assets/${assetId}${thumbnail ? '?thumbnail=true' : ''}`;
   return (
@@ -34,18 +36,25 @@ export const SceneCard = memo(function SceneCard({
       aria-label={data.scene.title}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <div className="scene-image">
-        <img
-          src={image(data.scene.mainAssetId)}
-          alt={data.scene.title}
-          loading="lazy"
-          draggable={false}
-        />
-        <span className="scene-number">
-          {String(data.number).padStart(2, '0')}
-        </span>
-        {data.recent && <span className="scene-updated">Updated</span>}
-      </div>
+      {mainAssetId ? (
+        <div className="scene-image">
+          <img
+            src={image(mainAssetId)}
+            alt={data.scene.title}
+            loading="lazy"
+            draggable={false}
+          />
+          <span className="scene-number">
+            {String(data.number).padStart(2, '0')}
+          </span>
+          {data.recent && <span className="scene-updated">Updated</span>}
+        </div>
+      ) : (
+        <div className="scene-text-meta">
+          <span>{String(data.number).padStart(2, '0')} · Text scene</span>
+          {data.recent && <span>Updated</span>}
+        </div>
+      )}
       <div className="scene-heading">
         <h2>{data.scene.title}</h2>
         <button
@@ -60,6 +69,9 @@ export const SceneCard = memo(function SceneCard({
           <ChevronDown size={17} className={data.expanded ? 'rotated' : ''} />
         </button>
       </div>
+      {!mainAssetId && !data.expanded && description && (
+        <p className="scene-text-preview">{description}</p>
+      )}
       <AnimatePresence initial={false}>
         {data.expanded && (
           <motion.div
@@ -101,20 +113,22 @@ export const SceneCard = memo(function SceneCard({
                   </div>
                 </section>
               )}
-              <a
-                className="original-link"
-                href={image(data.scene.mainAssetId, false)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View full image <ArrowUpRight size={12} />
-              </a>
+              {mainAssetId && (
+                <a
+                  className="original-link"
+                  href={image(mainAssetId, false)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View full image <ArrowUpRight size={12} />
+                </a>
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
       <div
-        className={`scene-actions nodrag${data.meshFoundryEnabled ? '' : ' scene-actions-last'}`}
+        className={`scene-actions nodrag${showAssetAction ? '' : ' scene-actions-last'}`}
       >
         <button
           onClick={(e) => {
@@ -136,7 +150,7 @@ export const SceneCard = memo(function SceneCard({
           <PencilLine size={14} /> Edit
         </button>
       </div>
-      {data.meshFoundryEnabled && (
+      {showAssetAction && (
         <div className="scene-asset-action nodrag">
           <button
             aria-label={`Copy asset-generation prompt for ${data.scene.title}`}

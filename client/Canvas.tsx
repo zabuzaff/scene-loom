@@ -119,7 +119,11 @@ function CanvasInner({
     async (id: string, action: 'continue' | 'edit' | 'assets') => {
       const p = latest.current,
         s = p.scenes.find((s) => s.id === id);
-      if (!s || (action === 'assets' && !p.meshFoundryEnabled)) return;
+      if (
+        !s ||
+        (action === 'assets' && (!p.meshFoundryEnabled || !s.mainAssetId))
+      )
+        return;
       try {
         await navigator.clipboard.writeText(
           action === 'assets'

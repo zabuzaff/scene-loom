@@ -1,5 +1,7 @@
 # Project Vision and creative starter — enhancement scope
 
+This document records the original enhancement scope. For current image requirements and text-only planning defaults, see [the agent interface](agent-interface.md).
+
 Prepared 2026-11-06. The owner subsequently authorized implementation in this chat. Commits, pushes, and deployment remain outside this authorization.
 
 ## Outcome

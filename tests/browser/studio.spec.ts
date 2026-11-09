@@ -71,7 +71,11 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
         { type: 'scene.create', scene: scene('arrival', 'Arrival') },
         {
           type: 'scene.create',
-          scene: scene('station', 'The station'),
+          scene: {
+            ...scene('station', 'The station'),
+            mainAssetId: undefined,
+            supportingAssetIds: [],
+          },
           placement: { nearSceneId: 'arrival' },
         },
         {
@@ -90,6 +94,16 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await page.getByRole('button', { name: `${title} 2 scenes` }).click();
     const arrival = page.getByRole('article', { name: 'Arrival', exact: true });
     await expect(arrival).toBeVisible();
+    const planningScene = page.getByRole('article', {
+      name: 'The station',
+      exact: true,
+    });
+    await expect(planningScene.getByText('02 · Text scene')).toBeVisible();
+    await expect(
+      planningScene.getByText('The player discovers a quiet coastal station.'),
+    ).toBeVisible();
+    await expect(planningScene.locator('img')).toHaveCount(0);
+    await page.screenshot({ path: 'test-results/text-only-planning-card.png' });
     await expect(page.locator('.react-flow__edge')).toHaveCount(1);
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
@@ -113,6 +127,25 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       'including Project Vision, all scenes, notes, and connections',
     );
     expect(development).toContain('implement it in this session');
+    expect(development).toContain('Build a working implementation by default');
+    expect(development).toContain(
+      'Keep unverified scene images unopened by default',
+    );
+    expect(development).toContain(
+      'establish and briefly record an independent design direction before coding',
+    );
+    expect(development).toContain(
+      'in scene descriptions or notes as illustrative unless I explicitly approved them as requirements',
+    );
+    expect(development).not.toContain(
+      'Inspect relevant full-resolution storyboard images as needed',
+    );
+    expect(development).toContain(
+      'Build a demo only when my current instructions explicitly ask for one',
+    );
+    expect(development).toContain(
+      'Do not substitute simulated success for a working feature',
+    );
     expect(development).toContain(
       'Identify synced scenes from a current Repository verification record',
     );
@@ -120,7 +153,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       'treat storyboard images and provisional visual directions as creative references',
     );
     expect(development).toContain(
-      'use the storyboard as the baseline for established flows',
+      'use the storyboard as the baseline for established flows and screens within the verified scope',
     );
     expect(development).toContain(
       'An existing repository alone does not prove that a storyboard is synced',
@@ -140,6 +173,11 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     const resync = await page.evaluate(() => navigator.clipboard.readText());
     expect(resync).toContain(`Scene Loom project: ${title} (${id})`);
     expect(resync).toContain('Treat the repository as read-only');
+    expect(resync).toContain('attach it to the same scene via mainAssetId');
+    expect(resync).toContain('has an outdated or speculative main image');
+    expect(resync).toContain(
+      'Use the newly imported ID in the verification record',
+    );
     expect(resync).toContain('Keep planned or partially implemented scenes');
     expect(resync).toContain(
       'including one whose image and description already match',
@@ -167,6 +205,11 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await picker.click();
     await page.reload();
     await expect(handoffButton).toBeVisible();
+    await expect(
+      planningScene.getByRole('button', {
+        name: 'Copy asset-generation prompt for The station',
+      }),
+    ).toHaveCount(0);
 
     const standaloneTitle = `${title} standalone`;
     nextInput = { id: `${id}_standalone`, title: standaloneTitle };
@@ -291,11 +334,17 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
       `Scene: Arrival (arrival)`,
     );
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+      'default to a text-only planning scene',
+    );
     await arrival
       .getByRole('button', { name: 'Copy edit prompt for Arrival' })
       .click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
       'Revise this scene in place',
+    );
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+      'default to a text-only planning scene',
     );
     await page.getByRole('button', { name: 'Collapse Arrival' }).click();
     const image = arrival.locator('.scene-image');
@@ -319,6 +368,11 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
           id: 'arrival',
           changes: { title: 'Arrival revised' },
         },
+        {
+          type: 'scene.patch',
+          id: 'station',
+          changes: { mainAssetId: asset.id },
+        },
       ],
     };
     input('project', 'apply', id);
@@ -332,6 +386,15 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     const state = cli('project', 'read', id).data;
     expect(state.positions.arrival.x).not.toBe(0);
     expect(state.scenes[0].title).toBe('Arrival revised');
+    await expect(
+      planningScene.getByRole('img', { name: 'The station' }),
+    ).toBeVisible();
+    await expect(
+      planningScene.getByRole('button', {
+        name: 'Copy asset-generation prompt for The station',
+      }),
+    ).toBeVisible();
+    expect(state.positions.station).toEqual(initialProject.positions.station);
     expect(state.vision.summary).toBe(visionFixture.summary);
     await page.reload();
     await expect(
@@ -828,6 +891,10 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
       .click();
     prompt = await page.evaluate(() => navigator.clipboard.readText());
     expect(prompt).toContain('Create a NEW software project');
+    expect(prompt).toContain('default to a text-only planning scene');
+    expect(prompt).toContain(
+      'use a game-style illustration for gameplay scenes',
+    );
     expect(prompt).not.toContain(id);
     cliInput(['project', 'apply', id], {
       schemaVersion: 1,
@@ -844,6 +911,7 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
     await page.getByRole('button', { name: 'Copy first scene prompt' }).click();
     const resume = await page.evaluate(() => navigator.clipboard.readText());
     expect(resume).toContain('Resume from the saved Project Vision');
+    expect(resume).toContain('default to a text-only planning scene');
     expect(resume).not.toContain('MAIN IDEA (required)');
     await trigger.click();
     await expect(

@@ -17,7 +17,8 @@ A personal local studio for seeing, understanding, and evolving software storybo
 ## Content and interaction
 
 - Each card represents a screen, interaction, workflow step, or gameplay moment, not necessarily a cinematic shot.
-- Every published card has a main image. Optional supporting images appear in its details.
+- Planned interface scenes default to text with the user goal, action, response, and relevant states. Layout sketches are available on request. Gameplay scenes default to game-style illustrations when available.
+- A scene can have a main image and supporting images. Repository resync can attach verified screenshots to an existing text scene.
 - Card details contain a description and notes; meaningful titles remain visible on the canvas.
 - Arrows support branches, joins, loops, and optional short labels.
 - Users can move cards. Agents preserve their arrangement unless explicitly asked to reorganize it.
@@ -37,7 +38,7 @@ Built-in chat or image generation, game engine integration, 3D asset studio, mul
 
 ## Project Vision enhancement
 
-Software projects include games, websites, web systems, mobile and desktop apps, and developer tools. Copy a new-project starter, provide a rough idea and optional name/type/audience/experience/visual direction/must-haves/boundaries/starting point. The external agent asks a few meaningful questions, researches references and naming collisions when available, saves a structured Project Vision, then publishes the first illustrated scene. Existing projects can define a vision without rewriting their scenes.
+Software projects include games, websites, web systems, mobile and desktop apps, and developer tools. Copy a new-project starter, provide a rough idea and optional name/type/audience/experience/visual direction/must-haves/boundaries/starting point. The external agent asks a few meaningful questions, researches references and naming collisions when available, saves a structured Project Vision, then publishes the first scene. Existing projects can define a vision without rewriting their scenes.
 
 Project Vision preserves original intent, confirmed decisions, assumptions, exclusions, and research. Edit and Continue read it and exercise creative judgment when direction is blank, defaulting to one scene. Refine vision changes the brief only unless scene updates are requested. See docs/project-vision-scope.md for the delivery scope and limits.
 

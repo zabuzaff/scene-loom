@@ -125,7 +125,7 @@ test('atomic graph batches support branches, joins, cycles and self-loops; retri
     hasCode('DUPLICATE_ID'),
   );
 });
-test('dry runs and stale revisions preserve bytes; image requirement cannot be bypassed', async (t) => {
+test('dry runs and stale revisions preserve bytes; unknown image references fail', async (t) => {
   const { store, scene, batch, root } = await fixture(t);
   const file = join(root, 'projects/test/project.json'),
     before = await readFile(file, 'utf8');
@@ -159,6 +159,34 @@ test('dry runs and stale revisions preserve bytes; image requirement cannot be b
       ...batch([{ type: 'scene.create', scene: scene('b') }], 1, 'unknown'),
       unexpected: true,
     }),
+  );
+});
+test('text-only scenes persist, accept a verified image later and can clear it without moving the card', async (t) => {
+  const { store, asset, scene, batch, root } = await fixture(t);
+  const planned = { ...scene('plan'), mainAssetId: undefined };
+  await store.apply(batch([{ type: 'scene.create', scene: planned }]));
+  const initial = await new Store(root).read('test');
+  assert.equal(initial.scenes[0].mainAssetId, undefined);
+  await store.apply(
+    batch(
+      [{ type: 'scene.patch', id: 'plan', changes: { mainAssetId: asset.id } }],
+      1,
+      'attach',
+    ),
+  );
+  const illustrated = await store.read('test');
+  assert.equal(illustrated.scenes[0].mainAssetId, asset.id);
+  assert.deepEqual(illustrated.positions, initial.positions);
+  await store.apply(
+    batch(
+      [{ type: 'scene.patch', id: 'plan', changes: { mainAssetId: null } }],
+      2,
+      'clear',
+    ),
+  );
+  assert.equal(
+    (await new Store(root).read('test')).scenes[0].mainAssetId,
+    null,
   );
 });
 test('serialized content changes and layout patches preserve both; restore advances both revisions', async (t) => {

@@ -8,7 +8,7 @@ The canvas occupies the workspace. Avoid dashboard metrics, large navigation sid
 
 ## Interaction proposal
 
-- A collapsed scene shows its main image, title, and clearly discoverable prompt actions.
+- A collapsed scene shows its title, prompt actions, and either its main image or a short description preview with a Text scene label.
 - Search results select and expand their scene with the same focus transition as canvas activation; selecting an already-open result refocuses it. The search field has no heavy input outline.
 - Open details through a smoothly expanding card body. Keep the image visually anchored; descriptions, notes, and supporting images become readable at useful zoom.
 - Opening details must not automatically rearrange the board. Evaluate overlap using a branched example before finalizing expansion behavior.

@@ -306,7 +306,10 @@ export class Store extends EventEmitter {
         'Scene and connection IDs must be unique within their collection.',
       );
     for (const scene of p.scenes) {
-      for (const id of [scene.mainAssetId, ...scene.supportingAssetIds]) {
+      const imageIds = scene.mainAssetId
+        ? [scene.mainAssetId, ...scene.supportingAssetIds]
+        : scene.supportingAssetIds;
+      for (const id of imageIds) {
         const asset = p.assets[id];
         if (!asset)
           fail(
