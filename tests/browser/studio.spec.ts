@@ -151,6 +151,24 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       'establish and briefly record an independent design direction before coding',
     );
     expect(development).toContain(
+      'extract only broad visual cues such as palette, contrast, restraint, and overall aesthetic',
+    );
+    expect(development).toContain(
+      'compare both widely used products and recent product launches or redesigns',
+    );
+    expect(development).toContain(
+      'For new or explicitly redesigned surfaces, use live web research',
+    );
+    expect(development).toContain(
+      'Prioritize the most recent comparable designs you can verify',
+    );
+    expect(development).toContain(
+      'dated screenshots, walkthroughs, or redesign notes that actually show the pattern',
+    );
+    expect(development).toContain(
+      'design an original interface for this project',
+    );
+    expect(development).toContain(
       'in scene descriptions or notes as illustrative unless I explicitly approved them as requirements',
     );
     expect(development).not.toContain(

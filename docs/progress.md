@@ -159,3 +159,7 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Start Development now directs agents to make the normal local app ready to try with repeatable, non-destructive fictional data and test-account seeding where needed. Storyboard preview and demo labels no longer invite a separate application mode. Browser verification exercises the normal startup path. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
 
 - Review follow-up: Start Development requires checking the effective datastore before automatic seeding, manual seeding, and browser writes. Seeding, browser checks, and startup instructions use the same verified local configuration. Typecheck, lint, formatting, and direct prompt checks passed.
+
+- Start Development now scopes reference websites to broad aesthetic cues by default. For new visual work, agents research comparable products online for workflow patterns and develop an original interface. Typecheck, lint, formatting, and direct prompt checks passed.
+
+- Review follow-up: design research now applies to new or explicitly redesigned surfaces, and recent examples require dated visual evidence showing the pattern. Typecheck, lint, formatting, and direct prompt checks passed.
