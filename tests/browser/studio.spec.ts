@@ -101,6 +101,43 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       name: 'Mesh Foundry handoff',
     });
     const initialProject = cli('project', 'read', id).data;
+    await picker.click();
+    await page
+      .getByRole('button', { name: 'Copy start development prompt' })
+      .click();
+    const development = await page.evaluate(() =>
+      navigator.clipboard.readText(),
+    );
+    expect(development).toContain(`Scene Loom project: ${title} (${id})`);
+    expect(development).toContain(
+      'including Project Vision, all scenes, notes, and connections',
+    );
+    expect(development).toContain('implement it in this session');
+    expect(development).toContain(
+      'I authorize browsing official documentation',
+    );
+    expect(development).toContain('Choose the frontend and backend frameworks');
+    expect(development).toContain('database or persistence approach');
+    expect(development).toContain('frontend component library autonomously');
+    expect(development).toContain('Do not build custom frameworks');
+    expect(development).toContain('Use Scene Loom as a read-only reference');
+    await picker.click();
+    await page
+      .getByRole('button', { name: 'Copy resync with repository prompt' })
+      .click();
+    const resync = await page.evaluate(() => navigator.clipboard.readText());
+    expect(resync).toContain(`Scene Loom project: ${title} (${id})`);
+    expect(resync).toContain('Treat the repository as read-only');
+    expect(resync).toContain('Keep planned or partially implemented scenes');
+    expect(resync).toContain(
+      'use it as expectedContentRevision for both the dry run and publication',
+    );
+    expect(resync).toContain(
+      'recompute the affected changes against the fresh content while preserving intervening edits',
+    );
+    expect(resync).toContain('SCENE_LOOM_DATA_DIR');
+    expect(cli('project', 'read', id).data).toEqual(initialProject);
+
     await expect(handoffButton).toHaveCount(0);
     await picker.click();
     await expect(meshSetting).not.toBeChecked();
@@ -121,6 +158,16 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       .getByRole('button', { name: `${standaloneTitle} 0 scenes` })
       .click();
     await expect(picker).toHaveText(standaloneTitle);
+    await picker.click();
+    await expect(
+      page.getByRole('button', { name: 'Copy start development prompt' }),
+    ).toBeDisabled();
+    await page
+      .getByRole('button', { name: 'Copy resync with repository prompt' })
+      .click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+      `Scene Loom project: ${standaloneTitle} (${id}_standalone)`,
+    );
     await picker.click();
     await expect(meshSetting).not.toBeChecked();
     await page.getByRole('button', { name: `${title} 2 scenes` }).click();

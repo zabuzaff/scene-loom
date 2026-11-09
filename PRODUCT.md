@@ -44,3 +44,7 @@ Project Vision preserves original intent, confirmed decisions, assumptions, excl
 ## Asset concept handoff
 
 When Mesh Foundry is enabled, scene cards also copy an asset-generation prompt for Mesh Foundry. The agent inspects the current scene image and vision, proposes objects and reuse candidates, and waits for creator confirmation of the list and destination project. Only then does it generate 2D concepts for the confirmed assets. The creator reviews and advances each asset individually through Mesh Foundry; Scene Loom does not run generation or accept work automatically.
+
+## Repository workflows
+
+The project menu copies a development prompt that uses the full storyboard as a brief and a resync prompt that updates the storyboard from verified repository behavior. Resync preserves planned scenes and distinguishes them from implemented behavior. The external agent resolves the target repository from the workspace or creator direction.

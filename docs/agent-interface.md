@@ -193,3 +193,11 @@ After approval, generate image-backed **2D Concepts** (`stage: "sketch"`) for al
 No Mesh Foundry service, installed checkout, or credentials are required to copy this prompt. Actual execution requires the external agent's access to both local CLIs, image inspection, and image generation. Missing capabilities are reported; no automatic installation/configuration or substitute-image publication is authorized by copying.
 
 The project read model may contain `meshFoundryEnabled`. Older projects may omit it and default to off. The creator controls this studio preference through the project menu. It is independent of content/layout revisions, and restoring a readable project keeps its current preference.
+
+## Development and repository resync
+
+The project menu copies two prompts that use the active Scene Loom project's stable ID and the current CLI configuration. Paste one into an agent session in the software repository or add the target path to the prompt. Scene Loom does not store a repository association.
+
+**Copy start development prompt** uses the complete storyboard and Project Vision as a brief. The agent inspects the target repository and researches current options online before coding. It chooses maintained frameworks, storage, and UI libraries where applicable, uses the existing stack when it fits, and implements a coherent first slice. For frontend work, it uses Impeccable when available and applicable and inspects the rendered result. It reports its stack choices, sources, checks, and which scenes it covers. This action is available after the first scene is published.
+
+**Copy resync with repository prompt** asks the agent to inspect the code and update the storyboard with verified behavior. Planned scenes remain visible and can be identified in their notes. New scenes need representative images. The agent submits evidence-backed patches through the CLI with a dry run and the content revision it actually reviewed. If that revision advances, the agent rereads the storyboard and recomputes the affected changes before retrying. Resync is also available on an empty board so it can document an existing implementation.

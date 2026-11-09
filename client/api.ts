@@ -118,3 +118,30 @@ Prepare a Mesh Foundry asset handoff from this Scene Loom scene. This is a harne
 
 Optional creator direction: `;
 }
+
+export function repositoryPrompt(
+  info: AgentInfo,
+  project: { id: string; title: string },
+  action: 'develop' | 'resync',
+) {
+  return `${interfacePrompt(info)}Scene Loom project: ${project.title} (${project.id})
+
+Read the complete current Scene Loom project with the CLI above, including Project Vision, all scenes, notes, and connections. Inspect relevant full-resolution storyboard images as needed. Resolve the intended software repository from my direction or the current workspace. Verify it is the correct repository before proceeding. If the target is ambiguous, ask for its path. Treat the Scene Loom checkout named in the CLI as tooling unless I explicitly identify it as the target repository.
+
+${
+  action === 'develop'
+    ? `Start development in the target repository using the full storyboard as the product brief. Inspect the repository's instructions, current code, and working tree first. Map the scene graph to user flows, including branches and states, and account for existing implementation and project constraints.
+
+Before coding, use your web tools to research current options. I authorize browsing official documentation, release notes, and package registries for this work. Choose the frontend and backend frameworks, database or persistence approach, and frontend component library autonomously, as applicable to the product. Keep the repository's existing stack when it meets the requirements. For new choices, prefer established, maintained tools with compatible versions, clear documentation, suitable licenses, and a good fit for the storyboard and deployment constraints. Use available frameworks and component libraries for standard functionality. Do not build custom frameworks or recreate standard components that a suitable library already provides. Reuse the project's existing design system where possible and select a compatible, accessible component library where needed. Add a database or separate backend only when the product needs one. If browsing is unavailable, say which choices could not be verified and rely on the installed stack and available documentation.
+
+For frontend design, UI implementation, or visual review, read and use the Impeccable skill when it is available and applicable. Follow the target repository's design guidance and inspect the rendered result at relevant viewport sizes. If the skill is unavailable, use the repository's design guidance and verify the rendered UI directly.
+
+Follow the selected tools' documented conventions and the repository's practices for accessibility, input validation, security, error handling, and testing where relevant. Use the project's package manager and lockfile for dependencies. Briefly explain your stack choices and cite the sources you checked. Choose a coherent first slice based on the whole storyboard and implement it in this session. Preserve existing work, make reasonable reversible decisions, and ask only about material blockers. Run the relevant repository checks and report what you implemented, which storyboard scenes it covers, and what remains. Use Scene Loom as a read-only reference during development. Commit, push, or deploy only if I explicitly request it.`
+    : `Resync this storyboard to the current target repository, including its working tree. Treat the repository as read-only. Inspect relevant routes, components, workflows, tests, and actual rendered behavior when available. Map evidence to the existing scenes and connections. Preserve stable IDs, layout, Project Vision, and creative intent. Keep planned or partially implemented scenes and clearly distinguish those states from verified behavior in their notes. Preserve unrelated notes. Report ambiguous mappings and proposed removals for review. Add scenes for meaningful implemented flows missing from the board only when you can import a representative main image. Reuse existing images where they still accurately depict the implementation. Never present speculative visuals as verified screens. If evidence or usable imagery is missing, report the gap and leave the affected content intact.
+
+Apply only evidence-backed scene and connection changes through the Scene Loom CLI. Record the contentRevision of the complete storyboard you reviewed and use it as expectedContentRevision for both the dry run and publication of the same atomic batch, with a unique request ID. If the revision advances before publication or either command reports a conflict, reread the storyboard, recompute the affected changes against the fresh content while preserving intervening edits, and dry-run a new batch with the newly reviewed revision and a new request ID. Never retry a stale batch by updating only its revision number. If nothing needs updating, report that without publishing a batch. Summarize what synced, what remains planned or uncertain, and the repository evidence you used.`
+}
+
+Target repository (optional if clear from workspace):
+Additional direction (optional): `;
+}

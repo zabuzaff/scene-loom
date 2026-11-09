@@ -126,3 +126,10 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Build/typecheck, lint, formatting, 11 integration tests, and four Chrome tests passed. Verified toggling on and off, reload persistence, isolation between projects, unchanged revisions, and restore behavior. Inspected the rendered project menu and completed an independent read-only review with no defects found.
 
 - Review follow-up: moved the Mesh Foundry switch above the independently scrollable project list. At 900 × 450, Chrome verified that the switch stays fully visible while scrolling to the last of 24 added project rows. Build, lint, formatting, and all four Chrome tests passed. Inspected the short-window capture.
+
+## Repository workflow prompts
+
+- Added project-menu actions to start development from the complete storyboard and resync the board from verified repository behavior. Development starts with a coherent implementation slice. Resync preserves planned scenes and uses revision-checked, evidence-backed updates. Agents resolve the software repository from the workspace or creator direction.
+- Build, lint, formatting, and all four Chrome tests passed. Verified clipboard contents, active-project targeting, empty-board behavior, and reachability in a short window. External agent execution remains to be tried on a real repository.
+
+- The development prompt authorizes web research before coding and delegates framework, database, and UI library selection. It asks the agent to use maintained dependencies and follow documented conventions. Build, lint, formatting, and the targeted Chrome clipboard test passed.

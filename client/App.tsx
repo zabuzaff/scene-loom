@@ -23,6 +23,7 @@ import {
   starterPrompt,
   visionPrompt,
   firstScenePrompt,
+  repositoryPrompt,
   type AgentInfo,
 } from './api';
 import { VisionPanel } from './VisionPanel';
@@ -171,20 +172,28 @@ export function App() {
       setSavingSettings(false);
     }
   }
-  async function copyStart(existing = false, refine = false) {
-    if (!info) return;
+  async function copyPrompt(prompt: string) {
     try {
-      await navigator.clipboard.writeText(
-        refine && project
-          ? visionPrompt(info, project)
-          : existing && project?.vision
-            ? firstScenePrompt(info, project)
-            : starterPrompt(info, existing ? project?.id : undefined),
-      );
+      await navigator.clipboard.writeText(prompt);
       notify('Prompt copied. Paste it into your agent.');
     } catch {
       notify('Clipboard unavailable. Allow clipboard access and try again.');
     }
+  }
+  async function copyStart(existing = false, refine = false) {
+    if (!info) return;
+    await copyPrompt(
+      refine && project
+        ? visionPrompt(info, project)
+        : existing && project?.vision
+          ? firstScenePrompt(info, project)
+          : starterPrompt(info, existing ? project?.id : undefined),
+    );
+  }
+  function copyRepositoryPrompt(action: 'develop' | 'resync') {
+    if (!info || !project || project.id !== activeRef.current) return;
+    void copyPrompt(repositoryPrompt(info, project, action));
+    setPicker(false);
   }
   return (
     <main className="studio">
@@ -255,6 +264,23 @@ export function App() {
                 ))}
                 {!projects.length && <p>No projects yet.</p>}
               </div>
+              {project && project.id === active && (
+                <>
+                  <button
+                    disabled={!info || !project.scenes.length}
+                    onClick={() => copyRepositoryPrompt('develop')}
+                  >
+                    Copy start development prompt <ArrowUpRight size={15} />
+                  </button>
+                  <button
+                    disabled={!info}
+                    onClick={() => copyRepositoryPrompt('resync')}
+                  >
+                    Copy resync with repository prompt{' '}
+                    <ArrowUpRight size={15} />
+                  </button>
+                </>
+              )}
               <button
                 disabled={!info}
                 onClick={() => {
