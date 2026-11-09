@@ -114,6 +114,18 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     );
     expect(development).toContain('implement it in this session');
     expect(development).toContain(
+      'Identify synced scenes from a current Repository verification record',
+    );
+    expect(development).toContain(
+      'treat storyboard images and provisional visual directions as creative references',
+    );
+    expect(development).toContain(
+      'use the storyboard as the baseline for established flows',
+    );
+    expect(development).toContain(
+      'An existing repository alone does not prove that a storyboard is synced',
+    );
+    expect(development).toContain(
       'I authorize browsing official documentation',
     );
     expect(development).toContain('Choose the frontend and backend frameworks');
@@ -129,6 +141,12 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(resync).toContain(`Scene Loom project: ${title} (${id})`);
     expect(resync).toContain('Treat the repository as read-only');
     expect(resync).toContain('Keep planned or partially implemented scenes');
+    expect(resync).toContain(
+      'including one whose image and description already match',
+    );
+    expect(resync).toContain(
+      'add or update a single Repository verification block',
+    );
     expect(resync).toContain(
       'use it as expectedContentRevision for both the dry run and publication',
     );

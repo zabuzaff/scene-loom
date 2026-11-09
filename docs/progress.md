@@ -133,3 +133,7 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Build, lint, formatting, and all four Chrome tests passed. Verified clipboard contents, active-project targeting, empty-board behavior, and reachability in a short window. External agent execution remains to be tried on a real repository.
 
 - The development prompt authorizes web research before coding and delegates framework, database, and UI library selection. It asks the agent to use maintained dependencies and follow documented conventions. Build, lint, formatting, and the targeted Chrome clipboard test passed.
+
+- Development now distinguishes new or unsynced storyboard references from an existing synced baseline. The prompt encourages original visual decisions for new work while carrying forward confirmed requirements. The Chrome clipboard regression passed with both cases covered in the copied instructions.
+
+- Review follow-up: resync instructs the agent to record per-scene repository verification in notes, including for scenes whose images already match. Development checks that evidence or follows explicit creator direction. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
