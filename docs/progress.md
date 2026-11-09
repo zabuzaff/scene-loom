@@ -163,3 +163,21 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Start Development now scopes reference websites to broad aesthetic cues by default. For new visual work, agents research comparable products online for workflow patterns and develop an original interface. Typecheck, lint, formatting, and direct prompt checks passed.
 
 - Review follow-up: design research now applies to new or explicitly redesigned surfaces, and recent examples require dated visual evidence showing the pattern. Typecheck, lint, formatting, and direct prompt checks passed.
+
+## Four-sided canvas connections
+
+- Scene cards have a connection point on each side. The canvas routes arrows from current card positions and measured bounds, preferring an axis with clear space between cards. Opposing arrows take separate paths and self-loops wrap around the top-right corner.
+- Build, lint, formatting, and all four Chrome tests passed. The routing checks verify vertical ports, a return path, a self-loop, and live rerouting after a layout change. Inspected the rendered fixture. Independent review identified the overlapping-bounds case, which was corrected before the final Chrome run.
+
+## Arrange scenes
+
+- Added an explicit Arrange scenes action beside Fit all. It places connected groups in columns, accounts for measured card sizes, and grids disconnected scenes below the flows. Positions save through the existing layout queue and the canvas frames the result.
+- Build, lint, formatting, and all four Chrome tests passed. After independent review, cycle fallback was corrected to start within a cycle instead of a downstream card. The cycle example and targeted Chrome arrange/restart test passed against the final code. Inspected the arranged branch fixture. If an agent inserts a scene while the arrangement is being saved, its independently assigned position can overlap an arranged card.
+
+- Arrange scenes now routes return wires along the outside of their source row or column. Chrome verified the new endpoints after arrangement for the forward, return, and join edges. Inspected the final arrangement and passed build, lint, and formatting checks.
+
+- The Weekbeam screenshot exposed labels wider than the card gaps and wires crossing nearby cards. Labels now have a compact width with the full text on hover. Routing checks card bounds, including endpoints, and tries alternate connectors when its preferred curve crosses a card. Return arrows reserve the forward arrow’s actual port pair. Build, lint, formatting, routing regressions, and the final targeted Chrome test passed. Inspected the arranged fixture with a long label.
+
+- Arrange scenes now interpolates card positions over 600 ms. Wires follow the moving endpoints and choose their final ports when the cards settle. Only final positions enter the layout save queue. All four Chrome tests passed, and the final targeted check confirmed intermediate positions and one layout save. Independent review led to preserving transient positions only for moving cards during live updates.
+
+- Patched the Arrange review findings. The save checks both revisions from the board used to calculate the layout. A conflict discards only the stale arrangement, restores saved positions, and prompts the user to arrange again. Wire collision checks now test line segments between curve samples. Build, lint, formatting, all 16 tests, and all four Chrome tests passed. Chrome inserted a scene immediately before the arrangement write and verified rejection followed by a successful rerun.

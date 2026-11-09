@@ -494,6 +494,16 @@ export class Store extends EventEmitter {
     return this.serial(async () => {
       const data = LayoutPatch.parse(input),
         p = await this.load(id);
+      if (
+        data.expectedContentRevision !== undefined &&
+        p.contentRevision !== data.expectedContentRevision
+      )
+        fail(
+          'CONTENT_CONFLICT',
+          `Current content revision is ${p.contentRevision}.`,
+          409,
+          'Reread the storyboard and arrange the current scenes.',
+        );
       if (p.layoutRevision !== data.expectedLayoutRevision)
         fail(
           'LAYOUT_CONFLICT',

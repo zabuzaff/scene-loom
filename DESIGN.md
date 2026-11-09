@@ -11,6 +11,8 @@ The canvas occupies the workspace. Avoid dashboard metrics, large navigation sid
 - A collapsed scene shows its title, prompt actions, and either its main image or a short description preview with a Text scene label.
 - Search results select and expand their scene with the same focus transition as canvas activation; selecting an already-open result refocuses it. The search field has no heavy input outline.
 - Open details through a smoothly expanding card body. Keep the image visually anchored; descriptions, notes, and supporting images become readable at useful zoom.
+- Arrange scenes is an explicit canvas action beside Fit all. It lays out each connected group from left to right, stacks branches within columns, and places disconnected scenes below the flows. Cards animate to their destinations with connected wires following them. The final positions are saved after the motion ends.
+- Connections choose among four sides using the cards’ current positions. Opposing arrows take separate paths, and self-loops wrap around the top-right corner.
 - Opening details must not automatically rearrange the board. Evaluate overlap using a branched example before finalizing expansion behavior.
 - Dragging must not accidentally open a card or trigger a copy button. Text selection and detail scrolling must not pan the canvas.
 - Motion should make expansion, selection, copying, and updates understandable. Avoid idle moving arrows, constant glow effects, or transitions that delay interaction.

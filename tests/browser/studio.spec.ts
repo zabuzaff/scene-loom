@@ -742,11 +742,62 @@ test('viewer reconnects after a real service restart with owned images and saved
             supportingAssetIds: [],
           },
         },
+        {
+          type: 'scene.create',
+          scene: {
+            id: 'upper',
+            title: 'Next scene',
+            description: 'Branches into the next scene',
+            notes: '',
+            supportingAssetIds: [],
+          },
+        },
+        ...['branch', 'join', 'detached'].map((id) => ({
+          type: 'scene.create',
+          scene: {
+            id,
+            title: id,
+            description: id,
+            notes: '',
+            supportingAssetIds: [],
+          },
+        })),
+        ...[
+          { id: 'split', sourceSceneId: 'scene', targetSceneId: 'branch' },
+          { id: 'join-a', sourceSceneId: 'upper', targetSceneId: 'join' },
+          {
+            id: 'join-b',
+            sourceSceneId: 'branch',
+            targetSceneId: 'join',
+            label: 'Continue from the branch into the confirmed shared result',
+          },
+          {
+            id: 'down',
+            sourceSceneId: 'scene',
+            targetSceneId: 'upper',
+            label: 'Next',
+          },
+          {
+            id: 'back',
+            sourceSceneId: 'upper',
+            targetSceneId: 'scene',
+            label: 'Return',
+          },
+          {
+            id: 'loop',
+            sourceSceneId: 'scene',
+            targetSceneId: 'scene',
+            label: 'Repeat',
+          },
+        ].map((connection) => ({ type: 'connection.create', connection })),
       ],
     });
     await call(
       'projects/restart/layout',
-      { expectedLayoutRevision: 0, positions: { scene: { x: 120, y: 240 } } },
+      {
+        expectedLayoutRevision: 0,
+        positions: { scene: { x: 120, y: 240 }, upper: { x: 120, y: 680 } },
+      },
       'PATCH',
     );
     await page.goto('http://127.0.0.1:4320');
@@ -763,7 +814,208 @@ test('viewer reconnects after a real service restart with owned images and saved
         name: 'Copy edit prompt for Persistent scene',
       }),
     ).toBeVisible();
-    await page.screenshot({ path: 'test-results/standalone-scene.png' });
+    const endpoints = (edgeId: string, from: string, to: string) =>
+      page
+        .getByTestId(`rf__edge-${edgeId}`)
+        .locator('path.react-flow__edge-path')
+        .evaluate(
+          (element, { from, to }) => {
+            const path = element as SVGPathElement;
+            const matrix = path.getScreenCTM()!;
+            const near = (selector: string, length: number) => {
+              const handle = document
+                .querySelector(selector)
+                ?.getBoundingClientRect();
+              const point = path
+                .getPointAtLength(length)
+                .matrixTransform(matrix);
+              return (
+                !!handle &&
+                Math.hypot(
+                  point.x - handle.x - handle.width / 2,
+                  point.y - handle.y - handle.height / 2,
+                ) < 8
+              );
+            };
+            return near(from, 0) && near(to, path.getTotalLength());
+          },
+          { from, to },
+        );
+    const port = (id: string, side: string) =>
+      `.react-flow__node[data-id="${id}"] .react-flow__handle[data-handleid="${side}"]`;
+    await expect
+      .poll(() =>
+        endpoints('down', port('scene', 'bottom'), port('upper', 'top')),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        endpoints('back', port('upper', 'left'), port('scene', 'left')),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        endpoints('loop', port('scene', 'top'), port('scene', 'right')),
+      )
+      .toBe(true);
+    await page.screenshot({ path: 'test-results/four-sided-connections.png' });
+    await call(
+      'projects/restart/layout',
+      {
+        expectedLayoutRevision: 1,
+        positions: { upper: { x: 580, y: 240 } },
+      },
+      'PATCH',
+    );
+    await expect
+      .poll(() =>
+        endpoints('down', port('scene', 'right'), port('upper', 'left')),
+      )
+      .toBe(true);
+    const readBoard = async () =>
+      JSON.parse(
+        await readFile(join(root, 'projects/restart/project.json'), 'utf8'),
+      );
+    const arrangeButton = page.getByRole('button', { name: 'Arrange scenes' });
+    const beforeConflict = await readBoard();
+    await page.route(
+      '**/projects/restart/layout',
+      async (route) => {
+        await call('projects/restart/apply', {
+          schemaVersion: 1,
+          projectId: 'restart',
+          requestId: 'during-arrange',
+          expectedContentRevision: beforeConflict.contentRevision,
+          operations: [
+            {
+              type: 'scene.create',
+              scene: {
+                id: 'added',
+                title: 'Added during arrange',
+                description: '',
+                notes: '',
+                supportingAssetIds: [],
+              },
+            },
+          ],
+        });
+        await route.continue();
+      },
+      { times: 1 },
+    );
+    await arrangeButton.click();
+    await expect(
+      page.getByText(
+        'The board changed while arranging. Click Arrange scenes to try again.',
+      ),
+    ).toBeVisible();
+    await expect(arrangeButton).toBeEnabled();
+    const beforeArrange = await readBoard();
+    expect(beforeArrange.layoutRevision).toBe(beforeConflict.layoutRevision);
+    for (const [id, position] of Object.entries(beforeConflict.positions))
+      expect(beforeArrange.positions[id]).toEqual(position);
+    const movingCard = page.locator('.react-flow__node[data-id="scene"]');
+    const startTransform = await movingCard.evaluate(
+      (el) => el.style.transform,
+    );
+    const layoutRequests: string[] = [];
+    page.on('request', (request) => {
+      if (
+        request.method() === 'PATCH' &&
+        request.url().endsWith('/projects/restart/layout')
+      )
+        layoutRequests.push(request.url());
+    });
+    const frames = await arrangeButton.evaluate(async (button) => {
+      const card = document.querySelector<HTMLElement>(
+        '.react-flow__node[data-id="scene"]',
+      )!;
+      const transforms: string[] = [];
+      (button as HTMLButtonElement).click();
+      for (let frame = 0; frame < 10; frame++) {
+        await new Promise(requestAnimationFrame);
+        transforms.push(card.style.transform);
+      }
+      return transforms;
+    });
+    expect(
+      new Set(frames.filter((frame) => frame !== startTransform)).size,
+    ).toBeGreaterThan(1);
+    expect(layoutRequests).toHaveLength(0);
+    await expect(arrangeButton).toBeEnabled();
+    await expect.poll(async () => (await readBoard()).layoutRevision).toBe(3);
+    expect(layoutRequests).toHaveLength(1);
+    const arranged = await readBoard();
+    expect(arranged.contentRevision).toBe(beforeArrange.contentRevision);
+    expect(arranged.connections).toEqual(beforeArrange.connections);
+    expect(arranged.positions.scene.x).toBeLessThan(arranged.positions.upper.x);
+    expect(arranged.positions.upper.x).toBe(arranged.positions.branch.x);
+    expect(arranged.positions.upper.y).not.toBe(arranged.positions.branch.y);
+    expect(arranged.positions.upper.x).toBeLessThan(arranged.positions.join.x);
+    expect(arranged.positions.detached.y).toBeGreaterThan(
+      arranged.positions.join.y,
+    );
+    await expect
+      .poll(() =>
+        endpoints('down', port('scene', 'right'), port('upper', 'left')),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        endpoints('back', port('upper', 'left'), port('scene', 'right')),
+      )
+      .toBe(false);
+    const returnPath = page
+      .getByTestId('rf__edge-back')
+      .locator('path.react-flow__edge-path');
+    const avoidsBranch = await returnPath.evaluate((element) => {
+      const path = element as SVGPathElement;
+      const box = document
+        .querySelector('.react-flow__node[data-id="branch"]')!
+        .getBoundingClientRect();
+      const matrix = path.getScreenCTM()!;
+      return Array.from({ length: 101 }, (_, index) =>
+        path
+          .getPointAtLength((path.getTotalLength() * index) / 100)
+          .matrixTransform(matrix),
+      ).every(
+        ({ x, y }) =>
+          x <= box.left || x >= box.right || y <= box.top || y >= box.bottom,
+      );
+    });
+    expect(avoidsBranch).toBe(true);
+    await expect
+      .poll(() =>
+        endpoints('join-a', port('upper', 'right'), port('join', 'left')),
+      )
+      .toBe(true);
+    for (const title of [
+      'Persistent scene',
+      'Next scene',
+      'branch',
+      'join',
+      'detached',
+    ]) {
+      await expect(
+        page.getByRole('article', { name: title, exact: true }),
+      ).toBeInViewport({ ratio: 0.99 });
+    }
+    const longLabel = page
+      .getByTestId('rf__edge-join-b')
+      .locator('.story-edge-label');
+    await expect(longLabel).toHaveAttribute(
+      'title',
+      'Continue from the branch into the confirmed shared result',
+    );
+    expect(
+      await longLabel.evaluate(
+        (el) => el.scrollWidth > el.clientWidth && el.clientWidth <= 84,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: 'test-results/arranged-scene-branches.png',
+      animations: 'disabled',
+    });
     await stop();
     await expect(page.locator('.connection-status')).toContainText(
       'Reconnecting',
@@ -788,7 +1040,7 @@ test('viewer reconnects after a real service restart with owned images and saved
     const latest = JSON.parse(
       await readFile(join(root, 'projects/restart/project.json'), 'utf8'),
     );
-    expect(latest.positions.scene).toEqual({ x: 120, y: 240 });
+    expect(latest.positions).toEqual(arranged.positions);
     await card.getByRole('button', { name: 'Continue from here' }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
       root,

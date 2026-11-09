@@ -385,6 +385,21 @@ a {
 .scene-actions svg {
   color: var(--accent);
 }
+.story-edge-label {
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--ground);
+  color: var(--soft);
+  font-size: 11px;
+  line-height: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+}
 .react-flow__handle {
   width: 7px !important;
   height: 7px !important;

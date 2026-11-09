@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { Fragment, memo } from 'react';
 import {
   Handle,
   Position,
@@ -35,7 +35,24 @@ export const SceneCard = memo(function SceneCard({
       className={`scene-card ${selected ? 'is-selected' : ''} ${data.expanded ? 'is-open' : ''} ${data.recent ? 'is-recent' : ''}`}
       aria-label={data.scene.title}
     >
-      <Handle type="target" position={Position.Left} isConnectable={false} />
+      {[Position.Left, Position.Right, Position.Top, Position.Bottom].map(
+        (side) => (
+          <Fragment key={side}>
+            <Handle
+              id={side}
+              type="target"
+              position={side}
+              isConnectable={false}
+            />
+            <Handle
+              id={side}
+              type="source"
+              position={side}
+              isConnectable={false}
+            />
+          </Fragment>
+        ),
+      )}
       {mainAssetId ? (
         <div className="scene-image">
           <img
@@ -164,7 +181,6 @@ export const SceneCard = memo(function SceneCard({
           </button>
         </div>
       )}
-      <Handle type="source" position={Position.Right} isConnectable={false} />
     </article>
   );
 });

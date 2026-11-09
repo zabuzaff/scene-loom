@@ -136,6 +136,7 @@ export const ProjectSettings = z.strictObject({
   meshFoundryEnabled: z.boolean(),
 });
 export const LayoutPatch = z.strictObject({
+  expectedContentRevision: z.number().int().nonnegative().optional(),
   expectedLayoutRevision: z.number().int().nonnegative(),
   positions: z.record(Id, Point).refine((v) => Object.keys(v).length > 0),
 });

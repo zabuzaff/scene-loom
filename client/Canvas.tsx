@@ -5,8 +5,8 @@ import {
   Background,
   BackgroundVariant,
   BaseEdge,
-  getBezierPath,
   MarkerType,
+  Position,
   useReactFlow,
   applyNodeChanges,
   type EdgeProps,
@@ -19,6 +19,7 @@ import {
   Plus,
   Minus,
   Maximize,
+  LayoutGrid,
   LocateFixed,
   ArrowUpRight,
 } from 'lucide-react';
@@ -31,39 +32,43 @@ import {
   type AgentInfo,
 } from './api';
 import { SceneCard, type SceneNode } from './SceneCard';
+import { arrangeScenes } from './arrange';
+import { clearPorts, connectionCurve } from './routing';
 const nodeTypes = { scene: SceneCard };
 function StoryEdge(props: EdgeProps) {
   let path: string, x: number, y: number;
   if (props.source === props.target) {
-    const top = Math.min(props.sourceY, props.targetY) - 240;
-    path = `M ${props.sourceX} ${props.sourceY} C ${props.sourceX + 180} ${top}, ${props.targetX - 180} ${top}, ${props.targetX} ${props.targetY}`;
-    x = (props.sourceX + props.targetX) / 2;
-    y = top + 62;
-  } else if (props.targetX < props.sourceX) {
-    const lower = Math.max(props.sourceY, props.targetY) + 240;
-    path = `M ${props.sourceX} ${props.sourceY} C ${props.sourceX + 190} ${lower}, ${props.targetX - 190} ${lower}, ${props.targetX} ${props.targetY}`;
-    x = (props.sourceX + props.targetX) / 2;
-    y = lower - 30;
-  } else [path, x, y] = getBezierPath({ ...props, curvature: 0.4 });
+    const { sourceX, sourceY, targetX, targetY } = props;
+    const right = targetX + 48;
+    const top = sourceY - 48;
+    path = `M ${sourceX} ${sourceY} C ${sourceX} ${top}, ${targetX} ${top}, ${right} ${top} C ${right + 34} ${top}, ${right + 34} ${targetY}, ${targetX} ${targetY}`;
+    x = (sourceX + targetX) / 2;
+    y = top + 7;
+  } else {
+    const curve = connectionCurve(
+      { x: props.sourceX, y: props.sourceY },
+      { x: props.targetX, y: props.targetY },
+      [props.sourcePosition, props.targetPosition],
+    );
+    path = curve.path;
+    ({ x, y } = curve.point(0.5));
+  }
   return (
-    <BaseEdge
-      id={props.id}
-      path={path}
-      markerEnd={props.markerEnd}
-      style={props.style}
-      label={props.label}
-      labelX={x}
-      labelY={y}
-      labelStyle={{
-        fill: 'var(--soft)',
-        fontSize: 11,
-        fontFamily: 'DM Sans Variable',
-      }}
-      labelShowBg
-      labelBgStyle={{ fill: 'var(--ground)', fillOpacity: 0.98 }}
-      labelBgPadding={[9, 5]}
-      labelBgBorderRadius={4}
-    />
+    <>
+      <BaseEdge
+        id={props.id}
+        path={path}
+        markerEnd={props.markerEnd}
+        style={props.style}
+      />
+      {props.label && (
+        <foreignObject x={x - 42} y={y - 10} width={84} height={20}>
+          <div className="story-edge-label" title={String(props.label)}>
+            {props.label}
+          </div>
+        </foreignObject>
+      )}
+    </>
   );
 }
 const edgeTypes = { story: StoryEdge };
@@ -96,6 +101,7 @@ function CanvasInner({
     [searchOpen, setSearchOpen] = useState(false),
     [zoom, setZoom] = useState(initialViewport?.zoom ?? 1),
     [saving, setSaving] = useState(false),
+    [arranging, setArranging] = useState(false),
     [saveError, setSaveError] = useState(false);
   const flow = useReactFlow<SceneNode>();
   const latest = useRef(project);
@@ -104,11 +110,24 @@ function CanvasInner({
     dragging = useRef(new Set<string>()),
     sending = useRef(false),
     mounted = useRef(true);
+  const fitAfterArrange = useRef(false);
+  const pendingArrange = useRef<{
+    expectedContentRevision: number;
+    expectedLayoutRevision: number;
+    positions: Map<string, PointData>;
+  } | null>(null);
+  const arrangement = useRef<{
+    frame: number;
+    routingNodes: SceneNode[];
+    movingIds: ReadonlySet<string>;
+  } | null>(null);
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      if (arrangement.current) cancelAnimationFrame(arrangement.current.frame);
+      arrangement.current = null;
     };
   }, []);
   const toggle = useCallback(
@@ -148,7 +167,10 @@ function CanvasInner({
             ...existing,
             id: scene.id,
             type: 'scene',
-            position: dirty.current[scene.id] ??
+            position: (arrangement.current?.movingIds.has(scene.id)
+              ? existing?.position
+              : undefined) ??
+              dirty.current[scene.id] ??
               (dragging.current.has(scene.id)
                 ? existing?.position
                 : undefined) ??
@@ -169,12 +191,97 @@ function CanvasInner({
       ),
     [project, expanded, recent, toggle, copy],
   );
-  const edges = useMemo<Edge[]>(
-    () =>
-      project.connections.map((c) => ({
+  const routingNodes = arrangement.current?.routingNodes ?? nodes;
+  const edges = useMemo<Edge[]>(() => {
+    const byId = new Map(
+      routingNodes.map((node) => {
+        const halfWidth = (node.measured?.width ?? 300) / 2;
+        const halfHeight = (node.measured?.height ?? 200) / 2;
+        return [
+          node.id,
+          {
+            x: node.position.x + halfWidth,
+            y: node.position.y + halfHeight,
+            halfWidth,
+            halfHeight,
+          },
+        ] as const;
+      }),
+    );
+    const pairs = new Set(
+      project.connections.map((c) => `${c.sourceSceneId}:${c.targetSceneId}`),
+    );
+    const routed = new Map<string, [Position, Position]>();
+    function route(source: string, target: string): [Position, Position] {
+      if (source === target) return [Position.Top, Position.Right];
+      const key = `${source}:${target}`;
+      const saved = routed.get(key);
+      if (saved) return saved;
+      const fallback = { x: 0, y: 0, halfWidth: 150, halfHeight: 100 };
+      const from = byId.get(source) ?? fallback;
+      const to = byId.get(target) ?? fallback;
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const horizontalGap = Math.abs(dx) >= from.halfWidth + to.halfWidth;
+      const verticalGap = Math.abs(dy) >= from.halfHeight + to.halfHeight;
+      const vertical =
+        horizontalGap === verticalGap
+          ? Math.abs(dy) > Math.abs(dx)
+          : verticalGap;
+      let sourceHandle = vertical
+        ? dy > 0
+          ? Position.Bottom
+          : Position.Top
+        : dx >= 0
+          ? Position.Right
+          : Position.Left;
+      let targetHandle = vertical
+        ? dy > 0
+          ? Position.Top
+          : Position.Bottom
+        : dx >= 0
+          ? Position.Left
+          : Position.Right;
+      const returnArrow = source > target && pairs.has(`${target}:${source}`);
+      let opposingPorts: [Position, Position] | undefined;
+      if (returnArrow) {
+        const [forwardSource, forwardTarget] = route(target, source);
+        opposingPorts = [forwardTarget, forwardSource];
+        // Put a return arrow on the outside of its source row or column.
+        // A lower branch returns below the flow rather than through the row above.
+        const sourceLeft = from.x - from.halfWidth;
+        const targetLeft = to.x - to.halfWidth;
+        const sourceTop = from.y - from.halfHeight;
+        const targetTop = to.y - to.halfHeight;
+        sourceHandle = targetHandle = vertical
+          ? sourceLeft > targetLeft
+            ? Position.Right
+            : Position.Left
+          : sourceTop > targetTop
+            ? Position.Bottom
+            : Position.Top;
+      }
+      const ports = clearPorts(
+        from,
+        to,
+        [sourceHandle, targetHandle],
+        byId.values(),
+        opposingPorts,
+      );
+      routed.set(key, ports);
+      return ports;
+    }
+    return project.connections.map((c) => {
+      const [sourceHandle, targetHandle] = route(
+        c.sourceSceneId,
+        c.targetSceneId,
+      );
+      return {
         id: c.id,
         source: c.sourceSceneId,
         target: c.targetSceneId,
+        sourceHandle,
+        targetHandle,
         label: c.label,
         type: 'story',
         markerEnd: {
@@ -184,9 +291,9 @@ function CanvasInner({
           color: '#929baa',
         },
         style: { stroke: 'var(--edge)', strokeWidth: 1.5 },
-      })),
-    [project.connections],
-  );
+      };
+    });
+  }, [routingNodes, project.connections]);
   const persist = useCallback(async () => {
     if (sending.current || !Object.keys(dirty.current).length) return;
     sending.current = true;
@@ -196,6 +303,15 @@ function CanvasInner({
       do {
         while (Object.keys(dirty.current).length) {
           const positions = { ...dirty.current };
+          const pending = pendingArrange.current;
+          const arranged =
+            pending &&
+            Object.entries(positions).some(
+              ([id, point]) => pending.positions.get(id) === point,
+            )
+              ? pending
+              : null;
+          if (pending && !arranged) pendingArrange.current = null;
           // Read a fresh layout revision; patch only moved cards, never the complete graph.
           const fresh = await api<ProjectData>(`projects/${project.id}`);
           const surviving = Object.fromEntries(
@@ -206,10 +322,44 @@ function CanvasInner({
           if (Object.keys(surviving).length) {
             try {
               await api(`projects/${project.id}/layout`, 'PATCH', {
-                expectedLayoutRevision: fresh.layoutRevision,
+                expectedLayoutRevision:
+                  arranged?.expectedLayoutRevision ?? fresh.layoutRevision,
+                expectedContentRevision: arranged?.expectedContentRevision,
                 positions: surviving,
               });
+              if (arranged) {
+                pendingArrange.current = null;
+                fitAfterArrange.current = true;
+              }
             } catch (e) {
+              if (
+                arranged &&
+                e instanceof RequestError &&
+                (e.detail.code === 'LAYOUT_CONFLICT' ||
+                  e.detail.code === 'CONTENT_CONFLICT')
+              ) {
+                const discarded = new Set<string>();
+                for (const [id, point] of arranged.positions) {
+                  if (dirty.current[id] !== point) continue;
+                  delete dirty.current[id];
+                  discarded.add(id);
+                }
+                setNodes((old) =>
+                  old.map((node) => {
+                    const saved = fresh.positions[node.id];
+                    return discarded.has(node.id) &&
+                      saved &&
+                      !dirty.current[node.id]
+                      ? { ...node, position: saved }
+                      : node;
+                  }),
+                );
+                pendingArrange.current = null;
+                notify(
+                  'The board changed while arranging. Click Arrange scenes to try again.',
+                );
+                continue;
+              }
               if (
                 e instanceof RequestError &&
                 e.detail.code === 'LAYOUT_CONFLICT'
@@ -227,8 +377,13 @@ function CanvasInner({
       } while (Object.keys(dirty.current).length);
     } catch (e) {
       if (mounted.current) {
-        setSaveError(true);
-        notify(`Position not saved: ${(e as Error).message} Use Retry save.`);
+        const hasUnsavedPositions = Object.keys(dirty.current).length > 0;
+        setSaveError(hasUnsavedPositions);
+        notify(
+          hasUnsavedPositions
+            ? `Position not saved: ${(e as Error).message} Use Retry save.`
+            : `Could not refresh the board: ${(e as Error).message}`,
+        );
       }
     } finally {
       sending.current = false;
@@ -237,6 +392,14 @@ function CanvasInner({
   }, [project.id, notify, refresh]);
   const onChanges = useCallback(
     (changes: NodeChange<SceneNode>[]) => {
+      if (arrangement.current) {
+        const structuralChanges = changes.filter(
+          (change) => change.type !== 'position',
+        );
+        if (structuralChanges.length)
+          setNodes((old) => applyNodeChanges(structuralChanges, old));
+        return;
+      }
       let completedMove = false;
       for (const change of changes) {
         if (change.type !== 'position' || !change.position) continue;
@@ -251,6 +414,80 @@ function CanvasInner({
     },
     [persist],
   );
+  useEffect(() => {
+    if (!fitAfterArrange.current) return;
+    fitAfterArrange.current = false;
+    void flow.fitView({ padding: 0.18, duration: 450, maxZoom: 1 });
+  }, [nodes, flow]);
+  function arrange() {
+    if (
+      nodes.length < 2 ||
+      dragging.current.size ||
+      arrangement.current ||
+      sending.current ||
+      Object.keys(dirty.current).length
+    )
+      return;
+    const positions = arrangeScenes(nodes, project.connections);
+    // The layout API accepts positions within ±100,000 canvas units.
+    if ([...positions.values()].some(({ x, y }) => x > 100000 || y > 100000)) {
+      notify('This board is too large to arrange automatically.');
+      return;
+    }
+    const moves = new Map<string, { from: PointData; to: PointData }>();
+    for (const { id, position: from } of nodes) {
+      const to = positions.get(id)!;
+      if (to.x !== from.x || to.y !== from.y) moves.set(id, { from, to });
+    }
+    if (!moves.size) return;
+
+    const duration = 600;
+    const started = performance.now();
+    const animation = {
+      frame: 0,
+      routingNodes: nodes,
+      movingIds: new Set(moves.keys()),
+    };
+    arrangement.current = animation;
+    setArranging(true);
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - started) / duration);
+      if (progress < 1) {
+        const eased = 1 - (1 - progress) ** 3;
+        setNodes((old) =>
+          old.map((node) => {
+            const move = moves.get(node.id);
+            if (!move) return node;
+            const { from, to } = move;
+            return {
+              ...node,
+              position: {
+                x: from.x + (to.x - from.x) * eased,
+                y: from.y + (to.y - from.y) * eased,
+              },
+            };
+          }),
+        );
+        animation.frame = requestAnimationFrame(step);
+        return;
+      }
+      arrangement.current = null;
+      setArranging(false);
+      const changes: NodeChange<SceneNode>[] = [];
+      for (const { id } of latest.current.scenes) {
+        const move = moves.get(id);
+        if (move) changes.push({ type: 'position', id, position: move.to });
+      }
+      if (!changes.length) return;
+      pendingArrange.current = {
+        expectedContentRevision: project.contentRevision,
+        expectedLayoutRevision: project.layoutRevision,
+        positions: new Map([...moves].map(([id, move]) => [id, move.to])),
+      };
+      onChanges(changes);
+    };
+    animation.frame = requestAnimationFrame(step);
+  }
   const focus = useCallback(
     (ids: string[]) => {
       const existing = flow.getNodes().filter((n) => ids.includes(n.id));
@@ -288,6 +525,7 @@ function CanvasInner({
         }}
         onNodeClick={(_, n) => toggle(n.id)}
         onPaneClick={() => setExpanded(null)}
+        nodesDraggable={!arranging}
         nodesConnectable={false}
         edgesReconnectable={false}
         deleteKeyCode={null}
@@ -407,6 +645,15 @@ function CanvasInner({
             <Plus size={17} />
           </button>
           <i />
+          <button
+            className="icon-button"
+            aria-label="Arrange scenes"
+            title="Arrange scenes by their connections"
+            disabled={nodes.length < 2 || arranging || saving || saveError}
+            onClick={arrange}
+          >
+            <LayoutGrid size={16} />
+          </button>
           <button
             className="icon-button"
             aria-label="Fit all scenes"

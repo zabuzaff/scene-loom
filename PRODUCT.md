@@ -21,7 +21,7 @@ A personal local studio for seeing, understanding, and evolving software storybo
 - A scene can have a main image and supporting images. Repository resync can attach verified screenshots to an existing text scene.
 - Card details contain a description and notes; meaningful titles remain visible on the canvas.
 - Arrows support branches, joins, loops, and optional short labels.
-- Users can move cards. Agents preserve their arrangement unless explicitly asked to reorganize it.
+- Users can drag cards or choose Arrange scenes to organize connected flows. Agents preserve the saved arrangement unless explicitly asked to reorganize it.
 - Copy buttons carry stable project/scene references and instructions to read current content, not stale copies of all notes. Nothing is automatically sent to a chat.
 
 ## Approved design and tools
@@ -34,7 +34,7 @@ Search/focus a scene, fit all, subtle recent-update feedback, and local recovery
 
 ## Exclusions
 
-Built-in chat or image generation, game engine integration, 3D asset studio, multiplayer, cloud accounts/sync, hosting, mobile-first interface, nested boards, alternate idea comparison, manual scene-content authoring UI, general drawing/whiteboard tools, automatic global rearrangement, and media timelines.
+Built-in chat or image generation, game engine integration, 3D asset studio, multiplayer, cloud accounts/sync, hosting, mobile-first interface, nested boards, alternate idea comparison, manual scene-content authoring UI, general drawing/whiteboard tools, background global rearrangement, and media timelines.
 
 ## Project Vision enhancement
 
