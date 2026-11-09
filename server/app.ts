@@ -149,6 +149,10 @@ export async function createApp(options: {
       ),
     );
   });
+  app.put('/api/projects/:id/settings', async (req) => {
+    await store.settings((req.params as { id: string }).id, req.body);
+    return ok(null);
+  });
   app.patch('/api/projects/:id/layout', async (req) =>
     ok(await store.layout((req.params as { id: string }).id, req.body)),
   );

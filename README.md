@@ -71,3 +71,7 @@ Use **Copy new project starter prompt** in the project menu, or the empty-studio
 ### Agent and harness compatibility
 
 Scene Loom uses a local CLI and versioned JSON schemas, not a particular AI provider. Use any agent harness that can execute the CLI on the machine running the studio (with the same data directory). A remote agent needs an explicitly configured way to execute locally; copying a prompt alone does not provide machine access. Browsing and image generation are optional external capabilities: without image generation/import access, an agent can still save a vision but cannot publish an imageless scene. Plain-text questions work without harness-specific interactive controls.
+
+### Optional Mesh Foundry handoff
+
+Scene Loom runs as a standalone storyboard studio by default. Open a project's menu beside the Scene Loom logo and turn on **Mesh Foundry handoff** to show **Copy asset-generation prompt** on that project's scene cards. The setting is saved per project and takes effect immediately. Your external agent uses Mesh Foundry when you paste the prompt and confirm the handoff.

@@ -106,3 +106,23 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Existing-project vision adoption now treats the current title as the supplied name, preserving it unless the creator explicitly requests renaming. Blank name fields no longer authorize new naming suggestions. A previously copied adoption prompt also preserves a vision saved by another session and asks for refinement direction.
 - The onboarding browser fixture uses a unique title and removes only its own project in `finally`, including on failure. Clipboard assertions cover the naming and existing-vision safeguards.
 - Verified production build/typecheck, lint, formatting, diff checks, and two consecutive runs of the targeted Chrome regression (2 passed, 7.9 seconds). Reviewed the patch locally; no commits or pushes.
+
+## Mesh Foundry asset concept handoff — 2026-11-09
+
+- Scene cards copy a harness-neutral prompt to inspect the current scene image and vision, propose assets and reuse candidates, and confirm the list and exact Mesh Foundry destination with the creator. After confirmation the prompt requests only image-backed 2D Concepts. Individual progression and approval take place in Mesh Foundry.
+- Build/typecheck, lint, formatting, and all four Chrome regressions passed. The scene-card regression passed again with the final styling. Rendered inspection covered collapsed and expanded cards, and browser assertions verified the clipboard target, confirmation and stage instructions, and unchanged scene data after copying.
+- Actual concept generation and publication through an external agent remain to be tested with a creator-approved list. Verification used isolated Scene Loom fixtures.
+
+## Standalone mode — 2026-11-09
+
+- Mesh Foundry handoff is off by default. Start with `SCENE_LOOM_MESH_FOUNDRY=1` to expose the asset prompt. The service reports the setting in agent info and standalone cards retain Continue and Edit.
+- Build/typecheck, lint, formatting, and all four Chrome regressions passed. Chrome exercises both service configurations and verifies that standalone cards hide the handoff action and retain Edit.
+
+- Review follow-up: the handoff prompt explicitly rereads the source after approval and before publication. A material change pauses the handoff for renewed confirmation. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
+
+## Per-project Mesh Foundry preference — 2026-11-09
+
+- The project menu now saves **Mesh Foundry handoff** for the active project. This replaces the startup environment flag. Projects without the preference default to off. The service serializes preference writes alongside content and layout writes and preserves the current preference during normal restore.
+- Build/typecheck, lint, formatting, 11 integration tests, and four Chrome tests passed. Verified toggling on and off, reload persistence, isolation between projects, unchanged revisions, and restore behavior. Inspected the rendered project menu and completed an independent read-only review with no defects found.
+
+- Review follow-up: moved the Mesh Foundry switch above the independently scrollable project list. At 900 × 450, Chrome verified that the switch stays fully visible while scrolling to the last of 24 added project rows. Build, lint, formatting, and all four Chrome tests passed. Inspected the short-window capture.

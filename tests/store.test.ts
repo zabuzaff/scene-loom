@@ -193,6 +193,11 @@ test('serialized content changes and layout patches preserve both; restore advan
     y: 30,
     zoom: 0.6,
   });
+  await store.settings('test', { meshFoundryEnabled: true });
+  assert.deepEqual(await new Store(root).read('test'), {
+    ...p,
+    meshFoundryEnabled: true,
+  });
   const backups = await store.backups('test');
   assert.equal(backups.length, 2);
   await assert.rejects(
@@ -211,6 +216,7 @@ test('serialized content changes and layout patches preserve both; restore advan
   assert.equal(restored.scenes[0].notes, '');
   assert.equal(restored.contentRevision, 3);
   assert.equal(restored.layoutRevision, 2);
+  assert.equal(restored.meshFoundryEnabled, true);
   assert.deepEqual(restored.positions.a, { x: 170, y: 230 });
 });
 test('retention bounds snapshots and allows explicit scene+connection removal', async (t) => {

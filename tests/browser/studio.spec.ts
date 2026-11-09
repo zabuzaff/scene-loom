@@ -93,10 +93,132 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await expect(page.locator('.react-flow__edge')).toHaveCount(1);
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    const handoffButton = arrival.getByRole('button', {
+      name: 'Copy asset-generation prompt for Arrival',
+    });
+    const picker = page.locator('.project-trigger');
+    const meshSetting = page.getByRole('switch', {
+      name: 'Mesh Foundry handoff',
+    });
+    const initialProject = cli('project', 'read', id).data;
+    await expect(handoffButton).toHaveCount(0);
+    await picker.click();
+    await expect(meshSetting).not.toBeChecked();
+    await meshSetting.click();
+    await expect(meshSetting).toBeChecked();
+    await page.screenshot({
+      path: 'test-results/mesh-foundry-project-setting.png',
+    });
+    await picker.click();
+    await page.reload();
+    await expect(handoffButton).toBeVisible();
+
+    const standaloneTitle = `${title} standalone`;
+    nextInput = { id: `${id}_standalone`, title: standaloneTitle };
+    expect(input('project', 'create').success).toBe(true);
+    await picker.click();
+    await page
+      .getByRole('button', { name: `${standaloneTitle} 0 scenes` })
+      .click();
+    await expect(picker).toHaveText(standaloneTitle);
+    await picker.click();
+    await expect(meshSetting).not.toBeChecked();
+    await page.getByRole('button', { name: `${title} 2 scenes` }).click();
+    await expect(handoffButton).toBeVisible();
+    await picker.click();
+    await meshSetting.click();
+    await expect(meshSetting).not.toBeChecked();
+    await expect(handoffButton).toHaveCount(0);
+    await meshSetting.click();
+    await expect(meshSetting).toBeChecked();
+    await picker.click();
+
+    // A long library must scroll independently of the active project's switch.
+    const viewport = page.viewportSize()!;
+    await page.route('**/api/projects', async (route) => {
+      const response = await route.fetch();
+      const result = await response.json();
+      await route.fulfill({
+        response,
+        json: {
+          ...result,
+          data: [
+            ...result.data,
+            ...Array.from({ length: 24 }, (_, index) => ({
+              id: `menu_fixture_${index}`,
+              title: `Menu fixture ${index + 1}`,
+              status: 'ready',
+              sceneCount: 0,
+              updatedAt: '2026-11-09T00:00:00.000Z',
+            })),
+          ],
+        },
+      });
+    });
+    await page.setViewportSize({ width: 900, height: 450 });
+    await page.reload();
+    await expect(handoffButton).toBeVisible();
+    await picker.click();
+    await expect(meshSetting).toBeInViewport({ ratio: 1 });
+    const lastProject = page.getByRole('button', {
+      name: 'Menu fixture 24 0 scenes',
+    });
+    await expect(lastProject).not.toBeInViewport();
+    await page.locator('.project-menu-list').hover();
+    await page.mouse.wheel(0, 4000);
+    await expect(lastProject).toBeInViewport({ ratio: 1 });
+    await expect(meshSetting).toBeInViewport({ ratio: 1 });
+    await page.screenshot({
+      path: 'test-results/project-menu-short-window.png',
+    });
+    await page.unroute('**/api/projects');
+    await page.setViewportSize(viewport);
+    await page.reload();
+    await expect(handoffButton).toBeVisible();
+
+    const beforeHandoff = cli('project', 'read', id).data;
+    expect(beforeHandoff).toEqual({
+      ...initialProject,
+      meshFoundryEnabled: true,
+    });
+    await arrival
+      .getByRole('button', { name: 'Copy asset-generation prompt for Arrival' })
+      .click();
+    const handoff = await page.evaluate(() => navigator.clipboard.readText());
+    expect(handoff).toContain(`Source project: ${title} (${id})`);
+    expect(handoff).toContain('Source scene: Arrival (arrival)');
+    expect(handoff).toContain('WAIT for explicit confirmation');
+    expect(handoff).toContain('reread the Scene Loom source before generating');
+    expect(handoff).toContain(
+      'Immediately before publishing, reread the Scene Loom source again',
+    );
+    expect(handoff).toContain(
+      'Pause publication for any material change and get renewed confirmation',
+    );
+    expect(handoff).toContain(
+      'Open and visually inspect the actual full-resolution main image',
+    );
+    expect(handoff).toContain('Publish only stage "sketch"');
+    expect(handoff).toContain('STOP after the 2D concepts are published');
+    expect(handoff).toContain('SCENE_LOOM_DATA_DIR');
+    await expect(
+      arrival.getByRole('button', { name: 'Open Arrival', exact: true }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(cli('project', 'read', id).data).toEqual(beforeHandoff);
+    await page.screenshot({ path: 'test-results/asset-handoff-collapsed.png' });
+
     await page
       .getByRole('button', { name: 'Open Arrival', exact: true })
       .click();
     await expect(arrival.getByText('Keep the reveal slow.')).toBeVisible();
+    await arrival
+      .getByRole('button', { name: 'Copy asset-generation prompt for Arrival' })
+      .click();
+    await expect(
+      arrival.getByRole('button', { name: 'Collapse Arrival' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    await page.screenshot({ path: 'test-results/asset-handoff-expanded.png' });
+
     await arrival.getByRole('button', { name: 'Continue from here' }).click();
     await expect(page.getByRole('status')).toContainText(
       'Continue prompt copied',
@@ -350,6 +472,10 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
   } finally {
     await rm(temp, { recursive: true, force: true });
     await rm(join(root, 'projects', id), { recursive: true, force: true });
+    await rm(join(root, 'projects', `${id}_standalone`), {
+      recursive: true,
+      force: true,
+    });
   }
 });
 
@@ -447,6 +573,17 @@ test('viewer reconnects after a real service restart with owned images and saved
     await expect(
       page.getByRole('article', { name: 'Persistent scene', exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: 'Copy asset-generation prompt for Persistent scene',
+      }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', {
+        name: 'Copy edit prompt for Persistent scene',
+      }),
+    ).toBeVisible();
+    await page.screenshot({ path: 'test-results/standalone-scene.png' });
     await stop();
     await expect(page.locator('.connection-status')).toContainText(
       'Reconnecting',

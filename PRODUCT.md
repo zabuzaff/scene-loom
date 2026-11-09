@@ -40,3 +40,7 @@ Built-in chat or image generation, game engine integration, 3D asset studio, mul
 Software projects include games, websites, web systems, mobile and desktop apps, and developer tools. Copy a new-project starter, provide a rough idea and optional name/type/audience/experience/visual direction/must-haves/boundaries/starting point. The external agent asks a few meaningful questions, researches references and naming collisions when available, saves a structured Project Vision, then publishes the first illustrated scene. Existing projects can define a vision without rewriting their scenes.
 
 Project Vision preserves original intent, confirmed decisions, assumptions, exclusions, and research. Edit and Continue read it and exercise creative judgment when direction is blank, defaulting to one scene. Refine vision changes the brief only unless scene updates are requested. See docs/project-vision-scope.md for the delivery scope and limits.
+
+## Asset concept handoff
+
+When Mesh Foundry is enabled, scene cards also copy an asset-generation prompt for Mesh Foundry. The agent inspects the current scene image and vision, proposes objects and reuse candidates, and waits for creator confirmation of the list and destination project. Only then does it generate 2D concepts for the confirmed assets. The creator reviews and advances each asset individually through Mesh Foundry; Scene Loom does not run generation or accept work automatically.

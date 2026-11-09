@@ -7,7 +7,7 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUpRight, PencilLine, ChevronDown } from 'lucide-react';
+import { ArrowUpRight, PencilLine, ChevronDown, Shapes } from 'lucide-react';
 import type { SceneData } from '../shared/schema';
 export type CardData = {
   scene: SceneData;
@@ -15,8 +15,9 @@ export type CardData = {
   number: number;
   expanded: boolean;
   recent: boolean;
+  meshFoundryEnabled: boolean;
   toggle: (id: string) => void;
-  copy: (id: string, action: 'continue' | 'edit') => void;
+  copy: (id: string, action: 'continue' | 'edit' | 'assets') => void;
 };
 export type SceneNode = Node<CardData, 'scene'>;
 export const SceneCard = memo(function SceneCard({
@@ -112,7 +113,9 @@ export const SceneCard = memo(function SceneCard({
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="scene-actions nodrag">
+      <div
+        className={`scene-actions nodrag${data.meshFoundryEnabled ? '' : ' scene-actions-last'}`}
+      >
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -133,6 +136,20 @@ export const SceneCard = memo(function SceneCard({
           <PencilLine size={14} /> Edit
         </button>
       </div>
+      {data.meshFoundryEnabled && (
+        <div className="scene-asset-action nodrag">
+          <button
+            aria-label={`Copy asset-generation prompt for ${data.scene.title}`}
+            title="Plan assets from this scene, then create 2D concepts in Mesh Foundry"
+            onClick={(e) => {
+              e.stopPropagation();
+              data.copy(id, 'assets');
+            }}
+          >
+            <Shapes size={14} /> Copy asset-generation prompt
+          </button>
+        </div>
+      )}
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </article>
   );

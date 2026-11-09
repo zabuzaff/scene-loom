@@ -179,10 +179,22 @@ a {
   top: 48px;
   left: -12px;
   width: 290px;
+  max-height: calc(100dvh - 96px);
+  display: flex;
+  flex-direction: column;
   background: var(--surface-raised);
   box-shadow: 0 12px 30px #0005;
   border-radius: 10px;
   padding: 7px;
+}
+.project-menu-list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.project-menu > button,
+.project-menu-note {
+  flex-shrink: 0;
 }
 .project-menu button {
   width: 100%;
@@ -201,6 +213,15 @@ a {
   color: var(--muted);
   margin-top: 4px;
   font-size: 10px;
+}
+.project-menu .project-setting {
+  border-bottom: 1px solid var(--line);
+}
+.project-menu .project-setting small {
+  margin: 0;
+}
+.project-menu .project-setting[aria-checked='true'] small {
+  color: var(--accent);
 }
 .project-menu p {
   padding: 0 10px;
@@ -333,10 +354,10 @@ a {
   background: var(--surface-hover);
   color: var(--text);
 }
-.scene-actions button:first-child {
+.scene-actions-last button:first-child {
   border-bottom-left-radius: var(--card-radius);
 }
-.scene-actions button:last-child {
+.scene-actions-last button:last-child {
   border-bottom-right-radius: var(--card-radius);
 }
 .scene-actions svg {
@@ -946,4 +967,24 @@ kbd {
   .project-trigger {
     max-width: 100%;
   }
+}
+
+.scene-asset-action {
+  border-top: 1px solid var(--line);
+}
+.scene-asset-action button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 12px 8px;
+  background: transparent;
+  color: var(--soft);
+  font-size: 12px;
+  border-radius: 0 0 var(--card-radius) var(--card-radius);
+}
+.scene-asset-action button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }

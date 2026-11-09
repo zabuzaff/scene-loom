@@ -23,7 +23,13 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import type { PointData, ProjectData, ViewportData } from '../shared/schema';
-import { api, RequestError, scenePrompt, type AgentInfo } from './api';
+import {
+  api,
+  RequestError,
+  scenePrompt,
+  assetGenerationPrompt,
+  type AgentInfo,
+} from './api';
 import { SceneCard, type SceneNode } from './SceneCard';
 const nodeTypes = { scene: SceneCard };
 function StoryEdge(props: EdgeProps) {
@@ -110,14 +116,18 @@ function CanvasInner({
     [],
   );
   const copy = useCallback(
-    async (id: string, action: 'continue' | 'edit') => {
+    async (id: string, action: 'continue' | 'edit' | 'assets') => {
       const p = latest.current,
         s = p.scenes.find((s) => s.id === id);
-      if (!s) return;
+      if (!s || (action === 'assets' && !p.meshFoundryEnabled)) return;
       try {
-        await navigator.clipboard.writeText(scenePrompt(info, p, s, action));
+        await navigator.clipboard.writeText(
+          action === 'assets'
+            ? assetGenerationPrompt(info, p, s)
+            : scenePrompt(info, p, s, action),
+        );
         notify(
-          `${action === 'continue' ? 'Continue' : 'Edit'} prompt copied. Paste it into your agent.`,
+          `${action === 'assets' ? 'Asset-generation' : action === 'continue' ? 'Continue' : 'Edit'} prompt copied. Paste it into your agent.`,
         );
       } catch {
         notify('Clipboard unavailable. Allow clipboard access and try again.');
@@ -148,6 +158,7 @@ function CanvasInner({
               recent: recent.includes(scene.id),
               toggle,
               copy,
+              meshFoundryEnabled: project.meshFoundryEnabled ?? false,
             },
           };
         }),

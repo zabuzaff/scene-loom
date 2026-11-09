@@ -19,7 +19,11 @@ export async function api<T>(
   if (!response.ok) throw new RequestError(result.error);
   return result.data;
 }
-export type AgentInfo = { root: string; cli: string; guide: string };
+export type AgentInfo = {
+  root: string;
+  cli: string;
+  guide: string;
+};
 const creativeGuidance = `This workflow is harness-neutral. Use your available shell/CLI, browsing, image, and conversation tools; no Codex-specific tools or skills are required. Present suggested answers as plain text if interactive question controls are unavailable. If you cannot execute the local CLI, explain that limitation rather than claiming to have saved changes. Read the current project, Project Vision, scenes, and relevant connections before changing anything. Use vocabulary appropriate to the software project: screens, workflows, interactions, or gameplay moments. Follow latest creator direction, confirmed decisions, creative pillars, then your own invention. Clarify foundational contradictions before a project-wide pivot. Preserve unrelated content, stable IDs, card positions, and viewport. Use the current content revision, a unique requestId, and a validated atomic batch with a dry run; reread and reconcile conflicts. Import required images before scene publication. Never edit stored project files directly.
 Without a vision, use existing content and state your assumptions; do not block scene work on setup. Explain what changed and why. If capabilities are unavailable, report the limitation honestly and preserve completed work.`;
 function interfacePrompt(info: AgentInfo) {
@@ -92,4 +96,25 @@ Resume from the saved Project Vision. Do not restart discovery, require the idea
 ${creativeGuidance}
 
 Optional direction: `;
+}
+
+export function assetGenerationPrompt(
+  info: AgentInfo,
+  project: { id: string; title: string },
+  scene: { id: string; title: string },
+) {
+  return `${interfacePrompt(info)}Source project: ${project.title} (${project.id})
+Source scene: ${scene.title} (${scene.id})
+
+Prepare a Mesh Foundry asset handoff from this Scene Loom scene. This is a harness-neutral workflow using available local CLI, image inspection, generation, and conversation tools. Copying this prompt has not authorized generation or acceptance.
+
+1. Read the current Scene Loom project, Project Vision (if present), scene description/notes, and mainAssetId. Resolve that asset through the project's owned asset manifest and the active Scene Loom data directory carried by the CLI above. Open and visually inspect the actual full-resolution main image, not just its thumbnail or written description. Inspect supporting images only when useful. Do not expose runtime credentials. If the image cannot be accessed or visually inspected, stop and explain what access is missing rather than inventing its objects.
+2. Discover Mesh Foundry's local checkout, agent-interface guide, active data directory, and CLI. Read its current help/schemas rather than assuming commands or a default data root. If unavailable or ambiguous, ask for its location. Do not install tools, start services, or modify configuration without authorization. Read candidate destination projects and existing assets/decisions. Propose a destination and CONFIRM the exact Mesh Foundry project ID and data directory with me; matching names do not prove identity. If a new project is needed, propose its name/brief and ask before creating it.
+3. Propose a concise numbered asset list grounded in the scene image. For each item state its name/category, visible identifying details, intended use, any inferred or hidden details, and whether an existing Mesh Foundry asset can be reused. Separate observed features from guesses. Avoid duplicates; do not turn every background speck into an asset. For websites/apps, propose useful visual assets only, not 3D versions of ordinary interface controls. Preserve the Project Vision's style, confirmed decisions, and exclusions; surface conflicts instead of silently changing them.
+4. Ask me to accept the list, remove/add items, change priorities, or request revisions. WAIT for explicit confirmation of both the final list and destination. Do not create projects, categories, assets, revisions, or generate images before that confirmation. A request to change the list is not approval to generate it.
+5. After confirmation, reread the Scene Loom source before generating. Compare the current main image asset ID, scene details, and Project Vision with what informed the approved list. If the image changed, inspect the new full-resolution image. If the scene is missing, stop. If any change materially affects the approved list or design, explain it, update the proposal, and wait for renewed confirmation. Once the source and approval agree, generate 2D CONCEPTS for ALL confirmed new assets, using one shared visual direction for consistency. Create one initial image-backed concept revision per asset unless I request variants. For existing assets, reuse approved work where suitable; do not overwrite it or add revisions unless I explicitly confirmed that work in the list. If material design ambiguities remain, ask focused questions with suggested answers and free-text options before inventing important hidden details. Read fresh destination state before publication, preserve unrelated work, and use Mesh Foundry's validated atomic CLI batches, current version, and unique request IDs. On conflict, reread and reconcile; never edit project JSON/blob files directly.
+6. Immediately before publishing, reread the Scene Loom source again and repeat the comparison against the approved references. Pause publication for any material change and get renewed confirmation before proceeding. Revise affected concepts to match the newly approved references. Publish only stage "sketch" (2D Concepts) through revision.publish with real image files. Record provenance in revision summaries or asset-scoped decisions: source Scene Loom project/scene IDs, main image asset ID and content revision actually inspected, and any creator-confirmed assumptions. If image generation or local publication is unavailable, report completed work and limitations; do not substitute unrelated images or claim success.
+7. STOP after the 2D concepts are published. Do not generate 3D prototypes, developed models, rigs, or animations; do not approve/accept anything. I will review and revise concepts in Mesh Foundry, then advance each asset individually through its approval-gated prompts. Report destination project, asset/revision IDs, reused items, and what needs review. Preserve all Scene Loom content and layout; this handoff does not publish back to Scene Loom or touch my software repository.
+
+Optional creator direction: `;
 }

@@ -80,6 +80,7 @@ export const Project = z.strictObject({
   layoutRevision: z.number().int().nonnegative(),
   updatedAt: z.string(),
   vision: ProjectVision.optional(),
+  meshFoundryEnabled: z.boolean().optional(),
   scenes: z.array(Scene),
   connections: z.array(Connection),
   assets: z.record(Id, Asset),
@@ -130,6 +131,9 @@ export const Batch = z.strictObject({
   requestId: Id,
   expectedContentRevision: z.number().int().nonnegative(),
   operations: z.array(Operation).min(1).max(1000),
+});
+export const ProjectSettings = z.strictObject({
+  meshFoundryEnabled: z.boolean(),
 });
 export const LayoutPatch = z.strictObject({
   expectedLayoutRevision: z.number().int().nonnegative(),

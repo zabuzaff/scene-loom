@@ -18,6 +18,7 @@ import {
   Batch,
   CreateProject,
   LayoutPatch,
+  ProjectSettings,
   Restore,
   Viewport,
   type ProjectData,
@@ -475,6 +476,17 @@ export class Store extends EventEmitter {
       return result;
     });
   }
+  async settings(id: string, input: unknown) {
+    return this.serial(async () => {
+      const settings = ProjectSettings.parse(input);
+      const project = await this.load(id);
+      if ((project.meshFoundryEnabled ?? false) === settings.meshFoundryEnabled)
+        return;
+      project.meshFoundryEnabled = settings.meshFoundryEnabled;
+      await atomicWrite(join(this.folder(id), 'project.json'), project);
+      this.emit('change', { projectId: id, kind: 'settings' });
+    });
+  }
   async layout(id: string, input: unknown) {
     return this.serial(async () => {
       const data = LayoutPatch.parse(input),
@@ -575,6 +587,7 @@ export class Store extends EventEmitter {
       // Retain imported assets and request receipts so retries cannot resurrect undone batches.
       const restored = {
         ...old!,
+        meshFoundryEnabled: p ? p.meshFoundryEnabled : old!.meshFoundryEnabled,
         assets: { ...old!.assets, ...p?.assets },
         receipts: p?.receipts ?? [],
         contentRevision: p

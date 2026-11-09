@@ -52,3 +52,5 @@ Rendered inspection used isolated, disposable visual QA data, never the owner's 
 ## Project Vision surface
 
 Mode: Read within the studio's Operate workspace. The project-title area exposes Project Vision; the project picker exposes a persistent Copy new project starter prompt action. An accessible nonmodal side panel uses the existing raised surface, close/Escape behavior, focus restoration, and scrollable long-form content. The canvas remains mounted beneath it. Confirmed decisions, assumptions, exclusions, original intent, references, and naming research are separate readable sections. Missing vision shows an adoption prompt; a saved vision without scenes remains readable. Help and vision panels are mutually exclusive. New-project prompts never carry an existing project target.
+
+With Mesh Foundry enabled, scene cards expose a full-width **Copy asset-generation prompt** action beneath Continue/Edit, keeping all three actions readable at the existing card width. It uses the same clipboard feedback and prevents card activation/dragging. Copying works in both collapsed and expanded states; it preserves expansion and layout.

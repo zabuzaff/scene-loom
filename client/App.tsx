@@ -40,6 +40,7 @@ export function App() {
       localStorage.getItem('scene-loom-project'),
     ),
     [picker, setPicker] = useState(false),
+    [savingSettings, setSavingSettings] = useState(false),
     [notice, setNotice] = useState(''),
     [error, setError] = useState(''),
     [connected, setConnected] = useState(false),
@@ -156,6 +157,20 @@ export function App() {
       setError(e.message);
     });
   }, [active, info, refresh]);
+  async function toggleMeshFoundry() {
+    if (!project || project.id !== activeRef.current || savingSettings) return;
+    setSavingSettings(true);
+    try {
+      await api(`projects/${project.id}/settings`, 'PUT', {
+        meshFoundryEnabled: !project.meshFoundryEnabled,
+      });
+      await refresh();
+    } catch (error) {
+      notify(`Could not update project settings. ${(error as Error).message}`);
+    } finally {
+      setSavingSettings(false);
+    }
+  }
   async function copyStart(existing = false, refine = false) {
     if (!info) return;
     try {
@@ -199,31 +214,47 @@ export function App() {
           </button>
           {picker && (
             <div className="project-menu">
-              {projects.map((p) => (
+              {project && project.id === active && (
                 <button
-                  key={p.id}
-                  disabled={p.status === 'unreadable'}
-                  title={
-                    p.status === 'unreadable' ? p.error.suggestion : undefined
-                  }
-                  onClick={() => {
-                    activeRef.current = p.id;
-                    setActive(p.id);
-                    setPicker(false);
-                  }}
+                  className="project-setting"
+                  role="switch"
+                  aria-checked={project.meshFoundryEnabled ?? false}
+                  disabled={savingSettings}
+                  onClick={() => void toggleMeshFoundry()}
                 >
-                  <span>
-                    {p.title}
-                    <small>
-                      {p.status === 'ready'
-                        ? `${p.sceneCount} scenes`
-                        : 'Needs recovery'}
-                    </small>
-                  </span>
-                  {active === p.id && <Check size={15} />}
+                  <span>Mesh Foundry handoff</span>
+                  <small aria-hidden="true">
+                    {project.meshFoundryEnabled ? 'On' : 'Off'}
+                  </small>
                 </button>
-              ))}
-              {!projects.length && <p>No projects yet.</p>}
+              )}
+              <div className="project-menu-list">
+                {projects.map((p) => (
+                  <button
+                    key={p.id}
+                    disabled={p.status === 'unreadable'}
+                    title={
+                      p.status === 'unreadable' ? p.error.suggestion : undefined
+                    }
+                    onClick={() => {
+                      activeRef.current = p.id;
+                      setActive(p.id);
+                      setPicker(false);
+                    }}
+                  >
+                    <span>
+                      {p.title}
+                      <small>
+                        {p.status === 'ready'
+                          ? `${p.sceneCount} scenes`
+                          : 'Needs recovery'}
+                      </small>
+                    </span>
+                    {active === p.id && <Check size={15} />}
+                  </button>
+                ))}
+                {!projects.length && <p>No projects yet.</p>}
+              </div>
               <button
                 disabled={!info}
                 onClick={() => {
