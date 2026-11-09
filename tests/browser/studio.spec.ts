@@ -129,6 +129,22 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(development).toContain('implement it in this session');
     expect(development).toContain('Build a working implementation by default');
     expect(development).toContain(
+      'populate its normal local datastore with realistic fictional records',
+    );
+    expect(development).toContain(
+      'Keep seeding local, idempotent, and non-destructive',
+    );
+    expect(development).toContain('run it before handoff');
+    expect(development).toContain(
+      'verify the effective datastore for that exact invocation',
+    );
+    expect(development).toContain(
+      'configure a confirmed local datastore through the normal startup path',
+    );
+    expect(development).toContain(
+      'Use that same local configuration for seeding, browser verification, and the startup instructions',
+    );
+    expect(development).toContain(
       'Keep unverified scene images unopened by default',
     );
     expect(development).toContain(
@@ -141,7 +157,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       'Inspect relevant full-resolution storyboard images as needed',
     );
     expect(development).toContain(
-      'Build a demo only when my current instructions explicitly ask for one',
+      'Do not build a separate preview or demo feature, mode, route, environment, or startup command',
     );
     expect(development).toContain(
       'Do not substitute simulated success for a working feature',
@@ -164,6 +180,24 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(development).toContain('Choose the frontend and backend frameworks');
     expect(development).toContain('database or persistence approach');
     expect(development).toContain('frontend component library autonomously');
+    expect(development).toContain(
+      'using a maintained, accessible UI component library is mandatory',
+    );
+    expect(development).toContain(
+      'Verify the library is used in rendered screens',
+    );
+    expect(development).not.toContain('component library where needed');
+    expect(development).toContain(
+      'verify the primary user flow end to end in a browser',
+    );
+    expect(development).toContain(
+      'Use the normal running application and its seeded local data',
+    );
+    expect(development).toContain(
+      'including desktop and mobile for responsive web apps',
+    );
+    expect(development).toContain('complete the primary flow with a keyboard');
+    expect(development).toContain('report browser verification as incomplete');
     expect(development).toContain('Do not build custom frameworks');
     expect(development).toContain('Use Scene Loom as a read-only reference');
     await picker.click();

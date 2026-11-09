@@ -151,3 +151,11 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Build, lint, formatting, 12 integration tests, and all four Chrome tests passed. Browser coverage verifies the text card, later image attachment during a nearby drag, and prompt defaults. Inspected the rendered mixed board. Independent review found outdated illustration wording, which was corrected and checked against the generated starter prompt.
 
 - Review follow-up: resync now instructs the agent to attach a verified screenshot to scenes with missing, outdated, or speculative imagery. It publishes the screenshot reference and verification notes together and marks outdated imagery unverified if capture is unavailable. Build, lint, formatting, and the targeted Chrome regression passed.
+
+- Start Development now requires a maintained UI component library for frontend work and asks the agent to verify its use in rendered screens. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
+
+- Start Development now requires browser verification of the primary frontend flow, including real application behavior, applicable persistence, intended viewport sizes, and keyboard operation. The agent reports observed results or marks verification incomplete with a blocker. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
+
+- Start Development now directs agents to make the normal local app ready to try with repeatable, non-destructive fictional data and test-account seeding where needed. Storyboard preview and demo labels no longer invite a separate application mode. Browser verification exercises the normal startup path. Build, lint, formatting, and the targeted Chrome clipboard regression passed.
+
+- Review follow-up: Start Development requires checking the effective datastore before automatic seeding, manual seeding, and browser writes. Seeding, browser checks, and startup instructions use the same verified local configuration. Typecheck, lint, formatting, and direct prompt checks passed.
