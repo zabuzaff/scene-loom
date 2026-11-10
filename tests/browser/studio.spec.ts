@@ -117,6 +117,58 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     const initialProject = cli('project', 'read', id).data;
     await picker.click();
     await page
+      .getByRole('button', { name: 'Copy plan development prompt' })
+      .click();
+    const plan = await page.evaluate(() => navigator.clipboard.readText());
+    expect(plan).toContain(`Scene Loom project: ${title} (${id})`);
+    expect(plan).toContain(
+      "Write the plan in the target repository's Markdown",
+    );
+    expect(plan).toContain(
+      'Do not edit application code or implement the slice',
+    );
+    expect(plan).toContain(
+      'extract only broad visual cues such as palette, contrast, restraint, and overall aesthetic',
+    );
+    expect(plan).toContain(
+      'compare both widely used products and recent product launches or redesigns',
+    );
+    expect(plan).toContain(
+      'For new or explicitly redesigned surfaces, use live web research',
+    );
+    expect(plan).toContain(
+      'Prioritize the most recent comparable designs you can verify',
+    );
+    expect(plan).toContain(
+      'dated screenshots, walkthroughs, or redesign notes that actually show the pattern',
+    );
+    expect(plan).toContain('design an original interface for this project');
+    expect(plan).toContain('I authorize browsing official documentation');
+    expect(plan).toContain('Choose the frontend and backend frameworks');
+    expect(plan).toContain('database or persistence approach');
+    expect(plan).toContain('frontend component library autonomously');
+    await picker.click();
+    await page
+      .getByRole('button', { name: 'Copy review development plan prompt' })
+      .click();
+    const review = await page.evaluate(() => navigator.clipboard.readText());
+    expect(review).toContain(`Scene Loom project: ${title} (${id})`);
+    expect(review).toContain('Give a Ready or Needs revision verdict');
+    expect(review).toContain(
+      'SHA-256 of the exact bytes reviewed for each plan file',
+    );
+    expect(review).toContain(
+      'Check that the planned scope and acceptance checks cover',
+    );
+    for (const prompt of [plan, review]) {
+      expect(prompt).toContain('shared layouts and route transitions');
+      expect(prompt).toContain('verify the effective local datastore');
+    }
+    expect(review).toContain(
+      'without editing the plan or implementing anything',
+    );
+    await picker.click();
+    await page
       .getByRole('button', { name: 'Copy start development prompt' })
       .click();
     const development = await page.evaluate(() =>
@@ -125,6 +177,19 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(development).toContain(`Scene Loom project: ${title} (${id})`);
     expect(development).toContain(
       'including Project Vision, all scenes, notes, and connections',
+    );
+    expect(development).toContain(
+      'Start development from the reviewed Markdown plan',
+    );
+    expect(development).toContain(
+      'report what is needed and stop before coding',
+    );
+    expect(development).toContain(
+      'Review result (paste here or give its location)',
+    );
+    expect(development).toContain('Require a Ready verdict');
+    expect(development).toContain(
+      'Recompute the SHA-256 of each current plan file',
     );
     expect(development).toContain('implement it in this session');
     expect(development).toContain('Build a working implementation by default');
@@ -151,24 +216,6 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       'establish and briefly record an independent design direction before coding',
     );
     expect(development).toContain(
-      'extract only broad visual cues such as palette, contrast, restraint, and overall aesthetic',
-    );
-    expect(development).toContain(
-      'compare both widely used products and recent product launches or redesigns',
-    );
-    expect(development).toContain(
-      'For new or explicitly redesigned surfaces, use live web research',
-    );
-    expect(development).toContain(
-      'Prioritize the most recent comparable designs you can verify',
-    );
-    expect(development).toContain(
-      'dated screenshots, walkthroughs, or redesign notes that actually show the pattern',
-    );
-    expect(development).toContain(
-      'design an original interface for this project',
-    );
-    expect(development).toContain(
       'in scene descriptions or notes as illustrative unless I explicitly approved them as requirements',
     );
     expect(development).not.toContain(
@@ -192,12 +239,6 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(development).toContain(
       'An existing repository alone does not prove that a storyboard is synced',
     );
-    expect(development).toContain(
-      'I authorize browsing official documentation',
-    );
-    expect(development).toContain('Choose the frontend and backend frameworks');
-    expect(development).toContain('database or persistence approach');
-    expect(development).toContain('frontend component library autonomously');
     expect(development).toContain(
       'using a maintained, accessible UI component library is mandatory',
     );
@@ -225,6 +266,10 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     const resync = await page.evaluate(() => navigator.clipboard.readText());
     expect(resync).toContain(`Scene Loom project: ${title} (${id})`);
     expect(resync).toContain('Treat the repository as read-only');
+    expect(resync).toContain(
+      'Review the numbering across the whole storyboard',
+    );
+    expect(resync).toContain('1.2.1 for a child of 1.2');
     expect(resync).toContain('attach it to the same scene via mainAssetId');
     expect(resync).toContain('has an outdated or speculative main image');
     expect(resync).toContain(
@@ -418,7 +463,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
         {
           type: 'scene.patch',
           id: 'arrival',
-          changes: { title: 'Arrival revised' },
+          changes: { title: '1 — Arrival revised' },
         },
         {
           type: 'scene.patch',
@@ -430,14 +475,19 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     input('project', 'apply', id);
     await page.mouse.up();
     await expect(
-      page.getByRole('article', { name: 'Arrival revised', exact: true }),
+      page.getByRole('article', { name: '1 — Arrival revised', exact: true }),
     ).toBeVisible();
     await expect
       .poll(() => cli('project', 'read', id).data.layoutRevision)
       .toBeGreaterThan(0);
     const state = cli('project', 'read', id).data;
     expect(state.positions.arrival.x).not.toBe(0);
-    expect(state.scenes[0].title).toBe('Arrival revised');
+    expect(state.scenes[0].title).toBe('1 — Arrival revised');
+    await expect(
+      page
+        .getByRole('article', { name: '1 — Arrival revised', exact: true })
+        .locator('.scene-number'),
+    ).toHaveCount(0);
     await expect(
       planningScene.getByRole('img', { name: 'The station' }),
     ).toBeVisible();
@@ -450,7 +500,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(state.vision.summary).toBe(visionFixture.summary);
     await page.reload();
     await expect(
-      page.getByRole('article', { name: 'Arrival revised', exact: true }),
+      page.getByRole('article', { name: '1 — Arrival revised', exact: true }),
     ).toBeVisible();
     expect(cli('project', 'read', id).data.positions.arrival).toEqual(
       state.positions.arrival,
@@ -466,7 +516,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       .toBe(beforeKeyboard.positions.arrival.x + 15);
     await page.reload();
     await expect(
-      page.getByRole('article', { name: 'Arrival revised', exact: true }),
+      page.getByRole('article', { name: '1 — Arrival revised', exact: true }),
     ).toBeVisible();
     expect(cli('project', 'read', id).data.positions.arrival.x).toBe(
       beforeKeyboard.positions.arrival.x + 15,
@@ -501,7 +551,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
         .toBe(beforeQueuedMove + 10);
       await page.reload();
       await expect(
-        page.getByRole('article', { name: 'Arrival revised', exact: true }),
+        page.getByRole('article', { name: '1 — Arrival revised', exact: true }),
       ).toBeVisible();
       expect(cli('project', 'read', id).data.positions.arrival.x).toBe(
         beforeQueuedMove + 10,
@@ -1195,6 +1245,7 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
       .click();
     prompt = await page.evaluate(() => navigator.clipboard.readText());
     expect(prompt).toContain('Create a NEW software project');
+    expect(prompt).toContain('three to six meaningful scenes');
     expect(prompt).toContain('default to a text-only planning scene');
     expect(prompt).toContain(
       'use a game-style illustration for gameplay scenes',
@@ -1212,9 +1263,12 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
         },
       ],
     });
-    await page.getByRole('button', { name: 'Copy first scene prompt' }).click();
+    await page
+      .getByRole('button', { name: 'Copy starter storyboard prompt' })
+      .click();
     const resume = await page.evaluate(() => navigator.clipboard.readText());
     expect(resume).toContain('Resume from the saved Project Vision');
+    expect(resume).toContain('three to six meaningful scenes');
     expect(resume).toContain('default to a text-only planning scene');
     expect(resume).not.toContain('MAIN IDEA (required)');
     await trigger.click();

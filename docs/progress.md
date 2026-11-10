@@ -181,3 +181,14 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Arrange scenes now interpolates card positions over 600 ms. Wires follow the moving endpoints and choose their final ports when the cards settle. Only final positions enter the layout save queue. All four Chrome tests passed, and the final targeted check confirmed intermediate positions and one layout save. Independent review led to preserving transient positions only for moving cards during live updates.
 
 - Patched the Arrange review findings. The save checks both revisions from the board used to calculate the layout. A conflict discards only the stale arrangement, restores saved positions, and prompts the user to arrange again. Wire collision checks now test line segments between curve samples. Build, lint, formatting, all 16 tests, and all four Chrome tests passed. Chrome inserted a scene immediately before the arrangement write and verified rejection followed by a successful rerun.
+
+## Starter storyboard and resync numbering
+
+- New projects and empty projects with a saved vision use the same starter guidance. It asks for three to six scenes covering one core journey, published with their connections in one batch. Planned interface scenes still default to text.
+- Starter and resync prompts use hierarchical title prefixes to show primary branches. Labeled connections describe alternate entries and cross-branch relationships. The arrange action currently uses the connection graph.
+
+## Development planning and review
+
+- The project menu now copies separate prompts for planning, independent review, and implementation. Planning puts researched decisions and acceptance checks in the target repo's Markdown. Review returns findings and a verdict tied to the files it read. Start development requires a matching review before coding.
+
+- Review follow-up. Start development requires a Ready verdict with a matching SHA-256 digest for every plan file. Planning and review cover the same applicable build requirements. Cards with hierarchical title prefixes display that number once, while older titles retain their positional badge.

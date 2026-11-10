@@ -66,7 +66,7 @@ Scene Loom has no dependency on fish.exe or any other software repository. No cl
 
 ## Develop a project vision
 
-Use **Copy new project starter prompt** in the project menu, or the empty-studio starting prompt. Paste it into your agent and fill in your rough idea; the other fields are optional. The agent develops the concept, asks a few questions, saves a Project Vision, and publishes the first scene. Planned interface scenes default to text, and gameplay scenes use illustrations when available. **Project Vision** opens the saved brief and a prompt to define or refine it. Edit and Continue can take your direction or use agent judgment when left blank. Research and image generation require capabilities in your external agent; naming web checks are preliminary, not legal clearance. See [the enhancement scope](docs/project-vision-scope.md).
+Use **Copy new project starter prompt** in the project menu, or the empty-studio starting prompt. Paste it into your agent and fill in your rough idea; the other fields are optional. The agent develops the concept, asks a few questions, saves a Project Vision, and publishes a small connected starter storyboard. Planned interface scenes default to text, and gameplay scenes use illustrations when available. **Project Vision** opens the saved brief and a prompt to define or refine it. Edit and Continue can take your direction or use agent judgment when left blank. Research and image generation require capabilities in your external agent; naming web checks are preliminary, not legal clearance. See [the enhancement scope](docs/project-vision-scope.md).
 
 ### Agent and harness compatibility
 

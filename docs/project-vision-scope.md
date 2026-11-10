@@ -8,7 +8,7 @@ Prepared 2026-11-06. The owner subsequently authorized implementation in this ch
 
 Scene Loom supports visual storyboarding for software projects: games, websites, web systems, mobile apps, desktop apps, developer tools, and other software. A scene can represent a screen, interaction, workflow step, or gameplay moment. Each project retains one canvas.
 
-The creator supplies a rough idea, answers a few important questions, and receives a durable Project Vision plus the first illustrated scene. Later Edit and Continue prompts use that vision and exercise creative judgment when the creator supplies no direction. The creator remains the final decision-maker.
+The creator supplies a rough idea, answers a few important questions, and receives a durable Project Vision plus a connected starter storyboard. Later Edit and Continue prompts use that vision and exercise creative judgment when the creator supplies no direction. The creator remains the final decision-maker.
 
 Research, conversation, and generation run in the external agent. Scene Loom stores and displays results and copies prompts; it does not run an agent, send messages, require AI credentials, or detect an external agent's progress.
 
@@ -17,7 +17,7 @@ Research, conversation, and generation run in the external agent. Scene Loom sto
 1. Copy a project starter prompt from the empty studio or a persistent New project action, including when other projects already exist. This starts a new project, never overwrites the selected one.
 2. Paste into an external agent and supply the main idea. Optional fields can be omitted or removed.
 3. The agent develops the idea, researches useful references when possible, and asks up to three consequential questions initially. Each question offers two or three concrete choices, a recommendation with a reason, and a free-text/delegate-to-agent option. Further questions are reserved for genuine blockers.
-4. After answers resolve major choices, the agent saves the vision and generates the first illustrated scene without another initiation request. Saving the vision first preserves work if image generation fails.
+4. After answers resolve major choices, the agent saves the vision and publishes a connected starter storyboard without another initiation request. Saving the vision first preserves work if image generation fails.
 5. Review the vision and scene in Scene Loom. Copy Refine vision, Edit this scene, or Continue from here; optionally append direction.
 
 No additional mandatory approval round follows answered discovery questions. If the creator asks to review a proposal before publication, honor that request. “You decide” authorizes reasonable creative assumptions, not fabricated research or technical feasibility claims.
@@ -141,7 +141,7 @@ Default to one revised scene or one new connected scene per scene prompt. Larger
 - Starter naming covers supplied names, blank names, creator-delegated selection, obvious search collisions, and unavailable browsing. Recommendations explain their relationship to the idea and accurately describe the scope of checks. Project title and saved vision name agree; renaming preserves stable project IDs and layout. Never assert that a name is unique or legally available from ordinary web searches.
 - Browser checks cover starter and existing-project entry points, clipboard contents, opening/closing the vision panel, empty and long content, and live vision updates preserving current canvas state.
 - Meaningful integration coverage checks revisions, recovery, validation, and compatibility. Prompt tests verify substantive instructions and targets rather than large snapshots of prose.
-- Conduct external-agent workflow trials for a game and a web system: rough idea only, a short options-based discovery, saved vision, first illustrated scene, directionless edit, and directionless continuation. Judge creative coherence manually; passing string tests cannot establish it.
+- Conduct external-agent workflow trials for a game and a web system: rough idea only, a short options-based discovery, saved vision, connected starter storyboard, directionless edit, and directionless continuation. Judge creative coherence manually; passing string tests cannot establish it.
 - Run typecheck, lint, formatting, tests, build, and browser regressions as appropriate. Inspect rendered laptop and narrow layouts. Use isolated absolute temporary data roots, never the owner's personal projects.
 
 ## Useful additions included; deliberate exclusions
@@ -162,4 +162,4 @@ Excluded: built-in AI/chat, embedded questionnaires, actual software implementat
 
 ## Honest limits
 
-Copied prompts guide an external agent; Scene Loom cannot guarantee that every harness supports browsing, image generation, interactive option controls, or follows the instructions perfectly. Plain-text choices and free-text replies are the portable baseline. Questions pause the external workflow; “immediate first scene” means after those questions are answered, not before. Creative quality needs creator review and real workflow trials.
+Copied prompts guide an external agent; Scene Loom cannot guarantee that every harness supports browsing, image generation, interactive option controls, or follows the instructions perfectly. Plain-text choices and free-text replies are the portable baseline. Questions pause the external workflow; “starter storyboard” means after those questions are answered, not before. Creative quality needs creator review and real workflow trials.

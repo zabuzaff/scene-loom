@@ -27,6 +27,12 @@ export const SceneCard = memo(function SceneCard({
 }: NodeProps<SceneNode>) {
   const update = useUpdateNodeInternals();
   const { mainAssetId, description } = data.scene;
+  const hasNumberedTitle = /^[1-9]\d*(?:\.[1-9]\d*)* — \S/.test(
+    data.scene.title,
+  );
+  const fallbackNumber = hasNumberedTitle
+    ? ''
+    : String(data.number).padStart(2, '0');
   const showAssetAction = data.meshFoundryEnabled && !!mainAssetId;
   const image = (assetId: string, thumbnail = true) =>
     `/api/projects/${data.projectId}/assets/${assetId}${thumbnail ? '?thumbnail=true' : ''}`;
@@ -61,14 +67,14 @@ export const SceneCard = memo(function SceneCard({
             loading="lazy"
             draggable={false}
           />
-          <span className="scene-number">
-            {String(data.number).padStart(2, '0')}
-          </span>
+          {fallbackNumber && (
+            <span className="scene-number">{fallbackNumber}</span>
+          )}
           {data.recent && <span className="scene-updated">Updated</span>}
         </div>
       ) : (
         <div className="scene-text-meta">
-          <span>{String(data.number).padStart(2, '0')} · Text scene</span>
+          <span>{fallbackNumber && `${fallbackNumber} · `}Text scene</span>
           {data.recent && <span>Updated</span>}
         </div>
       )}

@@ -233,6 +233,12 @@ a {
   border-top: 1px solid var(--line);
   margin-top: 5px;
 }
+@media (max-height: 540px) {
+  .project-menu > button,
+  .project-menu-note {
+    padding-block: 8px;
+  }
+}
 .canvas-shell {
   position: relative;
   flex: 1;

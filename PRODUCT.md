@@ -38,7 +38,7 @@ Built-in chat or image generation, game engine integration, 3D asset studio, mul
 
 ## Project Vision enhancement
 
-Software projects include games, websites, web systems, mobile and desktop apps, and developer tools. Copy a new-project starter, provide a rough idea and optional name/type/audience/experience/visual direction/must-haves/boundaries/starting point. The external agent asks a few meaningful questions, researches references and naming collisions when available, saves a structured Project Vision, then publishes the first scene. Existing projects can define a vision without rewriting their scenes.
+Software projects include games, websites, web systems, mobile and desktop apps, and developer tools. Copy a new-project starter, provide a rough idea and optional name/type/audience/experience/visual direction/must-haves/boundaries/starting point. The external agent asks a few meaningful questions, researches references and naming collisions when available, saves a structured Project Vision, then publishes a small connected starter storyboard. Existing projects can define a vision without rewriting their scenes.
 
 Project Vision preserves original intent, confirmed decisions, assumptions, exclusions, and research. Edit and Continue read it and exercise creative judgment when direction is blank, defaulting to one scene. Refine vision changes the brief only unless scene updates are requested. See docs/project-vision-scope.md for the delivery scope and limits.
 
@@ -48,4 +48,4 @@ When Mesh Foundry is enabled, scene cards also copy an asset-generation prompt f
 
 ## Repository workflows
 
-The project menu copies a development prompt that uses the full storyboard as a brief and a resync prompt that updates the storyboard from verified repository behavior. Resync preserves planned scenes and distinguishes them from implemented behavior. The external agent resolves the target repository from the workspace or creator direction.
+The project menu copies separate prompts to plan development, review the plan in a fresh agent session, and build from the reviewed plan. The agent researches and chooses the stack during planning. Planning Markdown lives in the software repository. The resync prompt updates the storyboard from verified repository behavior. Resync preserves planned scenes and distinguishes them from implemented behavior. The external agent resolves the target repository from the workspace or creator direction.

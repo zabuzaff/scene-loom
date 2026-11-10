@@ -22,7 +22,7 @@ import {
   api,
   starterPrompt,
   visionPrompt,
-  firstScenePrompt,
+  firstStoryboardPrompt,
   repositoryPrompt,
   type AgentInfo,
 } from './api';
@@ -186,11 +186,13 @@ export function App() {
       refine && project
         ? visionPrompt(info, project)
         : existing && project?.vision
-          ? firstScenePrompt(info, project)
+          ? firstStoryboardPrompt(info, project)
           : starterPrompt(info, existing ? project?.id : undefined),
     );
   }
-  function copyRepositoryPrompt(action: 'develop' | 'resync') {
+  function copyRepositoryPrompt(
+    action: Parameters<typeof repositoryPrompt>[2],
+  ) {
     if (!info || !project || project.id !== activeRef.current) return;
     void copyPrompt(repositoryPrompt(info, project, action));
     setPicker(false);
@@ -266,6 +268,19 @@ export function App() {
               </div>
               {project && project.id === active && (
                 <>
+                  <button
+                    disabled={!info || !project.scenes.length}
+                    onClick={() => copyRepositoryPrompt('plan')}
+                  >
+                    Copy plan development prompt <ArrowUpRight size={15} />
+                  </button>
+                  <button
+                    disabled={!info || !project.scenes.length}
+                    onClick={() => copyRepositoryPrompt('review')}
+                  >
+                    Copy review development plan prompt{' '}
+                    <ArrowUpRight size={15} />
+                  </button>
                   <button
                     disabled={!info || !project.scenes.length}
                     onClick={() => copyRepositoryPrompt('develop')}
@@ -389,7 +404,7 @@ export function App() {
             {project
               ? project.vision
                 ? 'Your vision is ready. Make it visible.'
-                : 'Give this project its first scene.'
+                : 'Give this project its first storyboard.'
               : 'Every idea starts\nwith a scene.'}
           </h1>
           <p>
@@ -403,7 +418,7 @@ export function App() {
             onClick={() => void copyStart(!!project)}
           >
             {project?.vision
-              ? 'Copy first scene prompt'
+              ? 'Copy starter storyboard prompt'
               : 'Copy a starting prompt'}{' '}
             <ArrowUpRight size={17} />
           </button>
