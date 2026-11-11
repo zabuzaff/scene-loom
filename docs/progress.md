@@ -1,5 +1,11 @@
 # Progress and continuation
 
+## Project switcher refinement — 2026-11-11
+
+- The header switcher opens with title search, a bounded scrolling project list, and an active-project indicator. The starter prompt stays in the footer, alongside the Project actions control for repository prompts and Mesh Foundry handoff.
+- Browser coverage exercises a long library in a short window, narrow viewport placement, filtering, arrow-key navigation, a single Tab stop for results, focus-leave dismissal, and project-specific prompts and settings.
+- Build, lint, formatting, 16 automated tests, and all 4 Chrome scenarios passed. Rendered checks covered a 900 × 450 window and a 390px-wide viewport.
+
 ## Project Vision implementation — 2026-11-06
 
 - Owner authorized implementation of the scoped enhancement. Added optional validated Project Vision to version-1 projects; existing models/snapshots remain valid without it. `project.vision.set` uses existing atomic content batches, revisions, deduplication, snapshots, and notifications, synchronizing title to the chosen name.

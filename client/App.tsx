@@ -10,6 +10,9 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   ChevronDown,
   Check,
+  Search,
+  Ellipsis,
+  ArrowLeft,
   ArrowUpRight,
   X,
   FolderOpen,
@@ -41,6 +44,9 @@ export function App() {
       localStorage.getItem('scene-loom-project'),
     ),
     [picker, setPicker] = useState(false),
+    [projectQuery, setProjectQuery] = useState(''),
+    [focusedProject, setFocusedProject] = useState<string | null>(null),
+    [projectActions, setProjectActions] = useState(false),
     [savingSettings, setSavingSettings] = useState(false),
     [notice, setNotice] = useState(''),
     [error, setError] = useState(''),
@@ -50,6 +56,35 @@ export function App() {
     [help, setHelp] = useState(false),
     [visionOpen, setVisionOpen] = useState(false);
   const closeVision = useCallback(() => setVisionOpen(false), []);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const closePicker = useCallback((restoreFocus = true) => {
+    setPicker(false);
+    setProjectQuery('');
+    setFocusedProject(null);
+    setProjectActions(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  }, []);
+  useEffect(() => {
+    if (!picker) return;
+    (projectActions ? backRef.current : searchRef.current)?.focus();
+  }, [picker, projectActions]);
+  useEffect(() => {
+    if (!picker) return;
+    function dismissOutside(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !pickerRef.current?.contains(event.target)
+      )
+        closePicker(false);
+    }
+    document.addEventListener('pointerdown', dismissOutside);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+    };
+  }, [picker, closePicker]);
   useEffect(() => {
     document.title = project
       ? `${project.title} — Scene Loom`
@@ -195,7 +230,22 @@ export function App() {
   ) {
     if (!info || !project || project.id !== activeRef.current) return;
     void copyPrompt(repositoryPrompt(info, project, action));
-    setPicker(false);
+    closePicker();
+  }
+  const normalizedQuery = projectQuery.trim().toLocaleLowerCase();
+  const matchingProjects = picker
+    ? projects.filter((p) =>
+        p.title.toLocaleLowerCase().includes(normalizedQuery),
+      )
+    : [];
+  const tabStop =
+    matchingProjects.find(
+      (p) => p.id === focusedProject && p.status === 'ready',
+    ) ?? matchingProjects.find((p) => p.status === 'ready');
+  function openProject(id: string) {
+    activeRef.current = id;
+    setActive(id);
+    closePicker();
   }
   return (
     <main className="studio">
@@ -214,101 +264,222 @@ export function App() {
           </span>
         </a>
         <div className="header-divider" />
-        <div className="project-picker">
+        <div
+          className="project-picker"
+          ref={pickerRef}
+          onBlur={(event) => {
+            if (
+              picker &&
+              event.relatedTarget &&
+              !event.currentTarget.contains(event.relatedTarget)
+            )
+              closePicker(false);
+          }}
+          onKeyDown={(event) => {
+            if (
+              !picker ||
+              event.key !== 'Escape' ||
+              event.nativeEvent.isComposing
+            )
+              return;
+            event.stopPropagation();
+            closePicker();
+          }}
+        >
           <button
             className="project-trigger"
+            ref={triggerRef}
             aria-expanded={picker}
-            onClick={() => setPicker((v) => !v)}
+            aria-controls={picker ? 'project-switcher' : undefined}
+            onClick={() => (picker ? closePicker() : setPicker(true))}
           >
             <span>{project?.title ?? 'Your projects'}</span>
             <ChevronDown size={15} />
           </button>
           {picker && (
-            <div className="project-menu">
-              {project && project.id === active && (
-                <button
-                  className="project-setting"
-                  role="switch"
-                  aria-checked={project.meshFoundryEnabled ?? false}
-                  disabled={savingSettings}
-                  onClick={() => void toggleMeshFoundry()}
-                >
-                  <span>Mesh Foundry handoff</span>
-                  <small aria-hidden="true">
-                    {project.meshFoundryEnabled ? 'On' : 'Off'}
-                  </small>
-                </button>
-              )}
-              <div className="project-menu-list">
-                {projects.map((p) => (
-                  <button
-                    key={p.id}
-                    disabled={p.status === 'unreadable'}
-                    title={
-                      p.status === 'unreadable' ? p.error.suggestion : undefined
-                    }
-                    onClick={() => {
-                      activeRef.current = p.id;
-                      setActive(p.id);
-                      setPicker(false);
+            <motion.section
+              id="project-switcher"
+              aria-label={projectActions ? 'Project actions' : 'Switch project'}
+              className="project-menu"
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.16, ease: 'easeOut' }}
+            >
+              {projectActions ? (
+                <>
+                  <div className="project-menu-toolbar">
+                    <button
+                      ref={backRef}
+                      onClick={() => setProjectActions(false)}
+                    >
+                      <ArrowLeft size={16} /> Projects
+                    </button>
+                    <span title={project?.title}>{project?.title}</span>
+                  </div>
+                  <div className="project-menu-list">
+                    {project && project.id === active && (
+                      <>
+                        <button
+                          disabled={!info || !project.scenes.length}
+                          onClick={() => copyRepositoryPrompt('plan')}
+                        >
+                          Copy plan development prompt{' '}
+                          <ArrowUpRight size={15} />
+                        </button>
+                        <button
+                          disabled={!info || !project.scenes.length}
+                          onClick={() => copyRepositoryPrompt('review')}
+                        >
+                          Copy review development plan prompt{' '}
+                          <ArrowUpRight size={15} />
+                        </button>
+                        <button
+                          disabled={!info || !project.scenes.length}
+                          onClick={() => copyRepositoryPrompt('develop')}
+                        >
+                          Copy start development prompt{' '}
+                          <ArrowUpRight size={15} />
+                        </button>
+                        <button
+                          disabled={!info}
+                          onClick={() => copyRepositoryPrompt('resync')}
+                        >
+                          Copy resync with repository prompt{' '}
+                          <ArrowUpRight size={15} />
+                        </button>
+                      </>
+                    )}
+                    {project && project.id === active && (
+                      <button
+                        className="project-setting"
+                        role="switch"
+                        aria-checked={project.meshFoundryEnabled ?? false}
+                        disabled={savingSettings}
+                        onClick={() => void toggleMeshFoundry()}
+                      >
+                        <span>Mesh Foundry handoff</span>
+                        <small aria-hidden="true">
+                          {project.meshFoundryEnabled ? 'On' : 'Off'}
+                        </small>
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label className="project-search">
+                    <Search size={16} />
+                    <input
+                      ref={searchRef}
+                      aria-label="Search projects"
+                      placeholder="Search projects…"
+                      value={projectQuery}
+                      onChange={(event) => setProjectQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing) return;
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          const match = matchingProjects.find(
+                            (p) => p.status === 'ready',
+                          );
+                          if (match) openProject(match.id);
+                        }
+                        if (event.key === 'ArrowDown') {
+                          event.preventDefault();
+                          pickerRef.current
+                            ?.querySelector<HTMLButtonElement>(
+                              '.project-menu-list button:not(:disabled)',
+                            )
+                            ?.focus();
+                        }
+                      }}
+                    />
+                  </label>
+                  <div
+                    className="project-menu-list"
+                    onKeyDown={(event) => {
+                      if (
+                        !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(
+                          event.key,
+                        )
+                      )
+                        return;
+                      const rows = Array.from(
+                        event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                          'button:not(:disabled)',
+                        ),
+                      );
+                      const index = rows.findIndex(
+                        (row) => row === event.target,
+                      );
+                      if (index < 0) return;
+                      event.preventDefault();
+                      if (event.key === 'Home') rows[0]?.focus();
+                      if (event.key === 'End') rows.at(-1)?.focus();
+                      if (event.key === 'ArrowDown') rows[index + 1]?.focus();
+                      if (event.key === 'ArrowUp') {
+                        if (index === 0) searchRef.current?.focus();
+                        else rows[index - 1]?.focus();
+                      }
                     }}
                   >
-                    <span>
-                      {p.title}
-                      <small>
-                        {p.status === 'ready'
-                          ? `${p.sceneCount} scenes`
-                          : 'Needs recovery'}
-                      </small>
-                    </span>
-                    {active === p.id && <Check size={15} />}
-                  </button>
-                ))}
-                {!projects.length && <p>No projects yet.</p>}
-              </div>
-              {project && project.id === active && (
-                <>
-                  <button
-                    disabled={!info || !project.scenes.length}
-                    onClick={() => copyRepositoryPrompt('plan')}
-                  >
-                    Copy plan development prompt <ArrowUpRight size={15} />
-                  </button>
-                  <button
-                    disabled={!info || !project.scenes.length}
-                    onClick={() => copyRepositoryPrompt('review')}
-                  >
-                    Copy review development plan prompt{' '}
-                    <ArrowUpRight size={15} />
-                  </button>
-                  <button
-                    disabled={!info || !project.scenes.length}
-                    onClick={() => copyRepositoryPrompt('develop')}
-                  >
-                    Copy start development prompt <ArrowUpRight size={15} />
-                  </button>
-                  <button
-                    disabled={!info}
-                    onClick={() => copyRepositoryPrompt('resync')}
-                  >
-                    Copy resync with repository prompt{' '}
-                    <ArrowUpRight size={15} />
-                  </button>
+                    {matchingProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        tabIndex={p.id === tabStop?.id ? 0 : -1}
+                        onFocus={() => setFocusedProject(p.id)}
+                        disabled={p.status === 'unreadable'}
+                        title={
+                          p.status === 'unreadable'
+                            ? p.error.suggestion
+                            : undefined
+                        }
+                        aria-current={active === p.id ? 'true' : undefined}
+                        onClick={() => openProject(p.id)}
+                      >
+                        <span>
+                          {p.title}
+                          <small>
+                            {p.status === 'ready'
+                              ? `${p.sceneCount} scenes`
+                              : 'Needs recovery'}
+                          </small>
+                        </span>
+                        {active === p.id && <Check size={15} />}
+                      </button>
+                    ))}
+                    {!matchingProjects.length && (
+                      <p role="status">
+                        {projects.length
+                          ? 'No matching projects.'
+                          : 'No projects yet.'}
+                      </p>
+                    )}
+                  </div>
+                  <div className="project-menu-footer">
+                    <button
+                      disabled={!info}
+                      onClick={() => {
+                        void copyStart();
+                        closePicker();
+                      }}
+                    >
+                      <span>Copy new project starter prompt</span>
+                      <ArrowUpRight size={15} />
+                    </button>
+                    {project && project.id === active && (
+                      <button
+                        aria-label="Project actions"
+                        title="Project actions"
+                        onClick={() => setProjectActions(true)}
+                      >
+                        <Ellipsis size={19} />
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
-              <button
-                disabled={!info}
-                onClick={() => {
-                  void copyStart();
-                  setPicker(false);
-                }}
-              >
-                Copy new project starter prompt <ArrowUpRight size={15} />
-              </button>
-              <div className="project-menu-note">
-                Projects are created through your agent.
-              </div>
-            </div>
+            </motion.section>
           )}
         </div>
         {project && (

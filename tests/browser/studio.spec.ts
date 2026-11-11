@@ -111,11 +111,16 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       name: 'Copy asset-generation prompt for Arrival',
     });
     const picker = page.locator('.project-trigger');
+    const actions = page.getByRole('button', { name: 'Project actions' });
+    async function openProjectActions() {
+      await picker.click();
+      await actions.click();
+    }
     const meshSetting = page.getByRole('switch', {
       name: 'Mesh Foundry handoff',
     });
     const initialProject = cli('project', 'read', id).data;
-    await picker.click();
+    await openProjectActions();
     await page
       .getByRole('button', { name: 'Copy plan development prompt' })
       .click();
@@ -147,7 +152,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(plan).toContain('Choose the frontend and backend frameworks');
     expect(plan).toContain('database or persistence approach');
     expect(plan).toContain('frontend component library autonomously');
-    await picker.click();
+    await openProjectActions();
     await page
       .getByRole('button', { name: 'Copy review development plan prompt' })
       .click();
@@ -167,7 +172,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(review).toContain(
       'without editing the plan or implementing anything',
     );
-    await picker.click();
+    await openProjectActions();
     await page
       .getByRole('button', { name: 'Copy start development prompt' })
       .click();
@@ -259,7 +264,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(development).toContain('report browser verification as incomplete');
     expect(development).toContain('Do not build custom frameworks');
     expect(development).toContain('Use Scene Loom as a read-only reference');
-    await picker.click();
+    await openProjectActions();
     await page
       .getByRole('button', { name: 'Copy resync with repository prompt' })
       .click();
@@ -292,7 +297,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(cli('project', 'read', id).data).toEqual(initialProject);
 
     await expect(handoffButton).toHaveCount(0);
-    await picker.click();
+    await openProjectActions();
     await expect(meshSetting).not.toBeChecked();
     await meshSetting.click();
     await expect(meshSetting).toBeChecked();
@@ -316,7 +321,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       .getByRole('button', { name: `${standaloneTitle} 0 scenes` })
       .click();
     await expect(picker).toHaveText(standaloneTitle);
-    await picker.click();
+    await openProjectActions();
     await expect(
       page.getByRole('button', { name: 'Copy start development prompt' }),
     ).toBeDisabled();
@@ -326,11 +331,12 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
       `Scene Loom project: ${standaloneTitle} (${id}_standalone)`,
     );
-    await picker.click();
+    await openProjectActions();
     await expect(meshSetting).not.toBeChecked();
+    await page.getByRole('button', { name: 'Projects', exact: true }).click();
     await page.getByRole('button', { name: `${title} 2 scenes` }).click();
     await expect(handoffButton).toBeVisible();
-    await picker.click();
+    await openProjectActions();
     await meshSetting.click();
     await expect(meshSetting).not.toBeChecked();
     await expect(handoffButton).toHaveCount(0);
@@ -338,7 +344,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await expect(meshSetting).toBeChecked();
     await picker.click();
 
-    // A long library must scroll independently of the active project's switch.
+    // A long library must scroll independently of its search and footer.
     const viewport = page.viewportSize()!;
     await page.route('**/api/projects', async (route) => {
       const response = await route.fetch();
@@ -364,7 +370,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await page.reload();
     await expect(handoffButton).toBeVisible();
     await picker.click();
-    await expect(meshSetting).toBeInViewport({ ratio: 1 });
+    await expect(actions).toBeInViewport({ ratio: 1 });
     const lastProject = page.getByRole('button', {
       name: 'Menu fixture 24 0 scenes',
     });
@@ -372,10 +378,64 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await page.locator('.project-menu-list').hover();
     await page.mouse.wheel(0, 4000);
     await expect(lastProject).toBeInViewport({ ratio: 1 });
-    await expect(meshSetting).toBeInViewport({ ratio: 1 });
+    await expect(actions).toBeInViewport({ ratio: 1 });
     await page.screenshot({
       path: 'test-results/project-menu-short-window.png',
     });
+    const search = page.getByRole('textbox', { name: 'Search projects' });
+    await expect(search).toBeFocused();
+    await search.press('Tab');
+    const firstResult = page
+      .locator('.project-menu-list button:enabled')
+      .first();
+    await expect(firstResult).toBeFocused();
+    await firstResult.press('End');
+    await expect(lastProject).toBeFocused();
+    await lastProject.press('ArrowUp');
+    await expect(
+      page.getByRole('button', { name: 'Menu fixture 23 0 scenes' }),
+    ).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
+      page.getByRole('button', { name: 'Copy new project starter prompt' }),
+    ).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(actions).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
+      page.getByRole('button', { name: 'Project Vision' }),
+    ).toBeFocused();
+    await expect(search).toHaveCount(0);
+    await picker.click();
+    await search.fill('  menu FIXTURE 24 ');
+    await expect(page.locator('.project-menu-list button')).toHaveCount(1);
+    await search.press('ArrowDown');
+    await expect(lastProject).toBeFocused();
+    await search.fill('no matches for this');
+    await expect(page.getByText('No matching projects.')).toBeVisible();
+    await search.press('Escape');
+    await expect(picker).toBeFocused();
+    await expect(search).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 720 });
+    await picker.click();
+    await expect(search).toHaveValue('');
+    const switcher = page.getByRole('region', { name: 'Switch project' });
+    await expect(switcher).toHaveCSS('opacity', '1');
+    const panel = await switcher.boundingBox();
+    expect(panel!.x).toBeGreaterThanOrEqual(0);
+    expect(panel!.x + panel!.width).toBeLessThanOrEqual(390);
+    await page.screenshot({ path: 'test-results/project-switcher-narrow.png' });
+    await page.mouse.click(4, 650);
+    await expect(search).toHaveCount(0);
+    await picker.click();
+    await search.fill(standaloneTitle);
+    await search.press('Enter');
+    await expect(picker).toHaveText(standaloneTitle);
+    await expect(picker).toHaveAttribute('aria-expanded', 'false');
+    await picker.click();
+    await search.fill(title);
+    await search.press('Enter');
+    await expect(picker).toHaveText(title);
     await page.unroute('**/api/projects');
     await page.setViewportSize(viewport);
     await page.reload();
