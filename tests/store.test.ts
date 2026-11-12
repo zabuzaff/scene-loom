@@ -860,3 +860,94 @@ test('a copy with damaged asset paths leaves the source and published library un
   assert.deepEqual(await store.list(), before);
   assert.deepEqual(await readdir(join(root, 'projects')), ['test']);
 });
+
+test('asset suggestions and results stay scoped to the enabled storyboard', async (t) => {
+  const { store, scene, batch } = await fixture(t);
+  await store.apply(
+    batch(['a', 'b'].map((id) => ({ type: 'scene.create', scene: scene(id) }))),
+  );
+  const suggestion = {
+    id: 'shared',
+    name: 'Sign',
+    description: 'A sign.',
+    explanation: 'Directs visitors.',
+    sceneIds: ['a', 'b'],
+  };
+  const draft = batch(
+    [{ type: 'asset-suggestion.upsert', suggestion }],
+    1,
+    'draft',
+  );
+  await assert.rejects(store.apply(draft), hasCode('HANDOFF_DISABLED'));
+  await store.settings('test', { meshFoundryEnabled: true });
+  await assert.rejects(
+    store.apply(
+      batch(
+        [
+          {
+            type: 'asset-suggestion.upsert',
+            suggestion: { ...suggestion, sceneIds: ['missing'] },
+          },
+        ],
+        1,
+        'dangling',
+      ),
+    ),
+    hasCode('INVALID_SCENE_LINKS'),
+  );
+  await store.apply(draft);
+  const result = {
+    libraryId: 'library',
+    libraryVersion: 2,
+    assetId: 'sign',
+    revisionId: 'concept',
+  };
+  const pin = {
+    type: 'asset-suggestion.result.set' as const,
+    id: suggestion.id,
+    result,
+  };
+  await store.apply(batch([pin], 2, 'pin'));
+  assert.equal(
+    (await store.apply(batch([pin], 3, 'repeat'))).contentRevision,
+    3,
+  );
+  const fork = await store.createStoryboard('test', { name: 'Alternative' });
+  assert.deepEqual((await store.read(fork.id)).assetSuggestions, [suggestion]);
+  await store.settings(fork.id, { meshFoundryEnabled: false });
+  await assert.rejects(
+    store.apply({ ...batch([pin], 0, 'disabled-pin'), projectId: fork.id }),
+    hasCode('HANDOFF_DISABLED'),
+  );
+  await store.apply(
+    batch([{ type: 'scene.delete', id: 'b' }], 3, 'delete-linked'),
+  );
+  assert.deepEqual((await store.read('test')).assetSuggestions, [
+    { ...suggestion, sceneIds: ['a'], result },
+  ]);
+  assert.deepEqual((await store.read(fork.id)).assetSuggestions, [suggestion]);
+  await assert.rejects(
+    store.apply(
+      batch(
+        [{ ...pin, result: { ...result, libraryVersion: 1 } }],
+        4,
+        'stale-pin',
+      ),
+    ),
+    hasCode('STALE_ASSET_RESULT'),
+  );
+  await store.apply(
+    batch(
+      [{ type: 'asset-suggestion.retire', id: suggestion.id }],
+      4,
+      'retire',
+    ),
+  );
+  await assert.rejects(
+    store.apply(batch([pin], 5, 'retired-pin')),
+    hasCode('SUGGESTION_RETIRED'),
+  );
+  assert.deepEqual((await store.read('test')).assetSuggestions, [
+    { ...suggestion, sceneIds: ['a'], result, retired: true },
+  ]);
+});

@@ -88,6 +88,24 @@ export const Storyboard = z.strictObject({
   sourceId: Id,
   sourceContentRevision: z.number().int().nonnegative(),
 });
+const AssetSuggestionDraft = z.strictObject({
+  id: Id,
+  name: z.string().trim().min(1).max(200),
+  description: Text,
+  explanation: Text,
+  sceneIds: z.array(Id).min(1),
+});
+const AssetSuggestionResult = z.strictObject({
+  libraryId: Id,
+  assetId: Id,
+  revisionId: Id,
+});
+const AssetSuggestion = AssetSuggestionDraft.extend({
+  retired: z.literal(true).optional(),
+  result: AssetSuggestionResult.extend({
+    libraryVersion: z.number().int().nonnegative().optional(),
+  }).optional(),
+});
 export const Project = z.strictObject({
   schemaVersion: z.literal(1),
   id: Id,
@@ -98,6 +116,7 @@ export const Project = z.strictObject({
   storyboard: Storyboard.optional(),
   vision: ProjectVision.optional(),
   meshFoundryEnabled: z.boolean().optional(),
+  assetSuggestions: z.array(AssetSuggestion).optional(),
   scenes: z.array(Scene),
   connections: z.array(Connection),
   assets: z.record(Id, Asset),
@@ -119,6 +138,21 @@ export const Operation = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('project.vision.set'),
     vision: ProjectVision,
+  }),
+  z.strictObject({
+    type: z.literal('asset-suggestion.upsert'),
+    suggestion: AssetSuggestionDraft,
+  }),
+  z.strictObject({
+    type: z.literal('asset-suggestion.retire'),
+    id: Id,
+  }),
+  z.strictObject({
+    type: z.literal('asset-suggestion.result.set'),
+    id: Id,
+    result: AssetSuggestionResult.extend({
+      libraryVersion: z.number().int().nonnegative(),
+    }),
   }),
   z.strictObject({
     type: z.literal('scene.create'),

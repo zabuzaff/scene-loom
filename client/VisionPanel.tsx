@@ -22,10 +22,12 @@ export function VisionPanel({
   project,
   close,
   copy,
+  copySuggestions,
 }: {
   project: ProjectData;
   close: () => void;
   copy: () => void;
+  copySuggestions?: () => void;
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -83,6 +85,14 @@ export function VisionPanel({
                 src={`/api/projects/${project.id}/assets/${vision.visualizationAssetId}`}
                 alt={vision.visualDirection || 'Approved project visualization'}
               />
+            </section>
+          )}
+          {copySuggestions && (
+            <section>
+              <button className="primary-button" onClick={copySuggestions}>
+                Copy asset suggestion prompt
+                <ArrowUpRight size={16} />
+              </button>
             </section>
           )}
           {sections.map(([key, label]) =>

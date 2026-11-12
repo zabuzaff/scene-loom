@@ -270,6 +270,9 @@ export class Store extends EventEmitter {
           sourceId,
           sourceContentRevision: source.contentRevision,
         },
+        assetSuggestions: source.assetSuggestions?.map(
+          ({ result: _result, ...draft }) => draft,
+        ),
         contentRevision: 0,
         layoutRevision: 0,
         receipts: [],
@@ -481,6 +484,22 @@ export class Store extends EventEmitter {
         'DUPLICATE_ID',
         'Scene and connection IDs must be unique within their collection.',
       );
+    const suggestions = p.assetSuggestions ?? [];
+    if (
+      new Set(suggestions.map((suggestion) => suggestion.id)).size !==
+      suggestions.length
+    )
+      fail('DUPLICATE_ID', 'Asset suggestion IDs must be unique.');
+    for (const suggestion of suggestions)
+      if (
+        new Set(suggestion.sceneIds).size !== suggestion.sceneIds.length ||
+        (!suggestion.retired &&
+          suggestion.sceneIds.some((id) => !scenes.has(id)))
+      )
+        fail(
+          'INVALID_SCENE_LINKS',
+          'Asset suggestions must link to distinct existing scenes.',
+        );
     const visualizationId = p.vision?.visualizationAssetId;
     const checkImage = async (id: string, owner: string, sceneId?: string) => {
       const asset = p.assets[id];
@@ -603,10 +622,57 @@ export class Store extends EventEmitter {
       if (priorVisualization && !priorVisualization.kind)
         priorVisualization.kind = 'visualization';
       const affected = new Set<string>();
+      const updatedDrafts = new Set<string>();
       for (const [index, op] of batch.operations.entries()) {
         if (op.type === 'project.vision.set') {
           next.vision = op.vision;
           if (!next.storyboard) next.title = op.vision.name;
+          continue;
+        }
+        if (
+          op.type === 'asset-suggestion.upsert' ||
+          op.type === 'asset-suggestion.retire' ||
+          op.type === 'asset-suggestion.result.set'
+        ) {
+          if (p.meshFoundryEnabled !== true)
+            fail(
+              'HANDOFF_DISABLED',
+              'Enable Mesh Foundry handoff for this storyboard.',
+              403,
+            );
+          const suggestions = (next.assetSuggestions ??= []);
+          const id =
+            op.type === 'asset-suggestion.upsert' ? op.suggestion.id : op.id;
+          const prior = suggestions.find((suggestion) => suggestion.id === id);
+          if (prior?.retired && op.type !== 'asset-suggestion.retire')
+            fail('SUGGESTION_RETIRED', 'Use a new ID for a new draft.', 409);
+          if (op.type === 'asset-suggestion.upsert') {
+            updatedDrafts.add(id);
+            if (prior) Object.assign(prior, op.suggestion);
+            else suggestions.push(op.suggestion);
+          } else {
+            if (!prior)
+              fail('NOT_FOUND', 'Asset suggestion does not exist.', 404);
+            if (op.type === 'asset-suggestion.retire') {
+              prior.retired = true;
+            } else {
+              const previous = prior.result;
+              if (
+                previous?.libraryVersion !== undefined &&
+                (previous.libraryId !== op.result.libraryId ||
+                  previous.libraryVersion > op.result.libraryVersion ||
+                  (previous.libraryVersion === op.result.libraryVersion &&
+                    (previous.assetId !== op.result.assetId ||
+                      previous.revisionId !== op.result.revisionId)))
+              )
+                fail(
+                  'STALE_ASSET_RESULT',
+                  'Reread the current Mesh Foundry pin before writing back.',
+                  409,
+                );
+              prior.result = op.result;
+            }
+          }
           continue;
         }
         const sceneOp = op.type.startsWith('scene.');
@@ -643,6 +709,26 @@ export class Store extends EventEmitter {
           affected.add(op.id);
         }
       }
+      const deletedScenes = new Set(
+        batch.operations.flatMap((op) =>
+          op.type === 'scene.delete' ? [op.id] : [],
+        ),
+      );
+      if (deletedScenes.size && next.assetSuggestions) {
+        const remaining = new Set(next.scenes.map((scene) => scene.id));
+        next.assetSuggestions = next.assetSuggestions
+          .map((suggestion) =>
+            suggestion.retired || updatedDrafts.has(suggestion.id)
+              ? suggestion
+              : {
+                  ...suggestion,
+                  sceneIds: suggestion.sceneIds.filter(
+                    (id) => !deletedScenes.has(id) || remaining.has(id),
+                  ),
+                },
+          )
+          .filter((suggestion) => suggestion.sceneIds.length);
+      }
       for (const op of batch.operations)
         if (
           op.type === 'scene.create' &&
@@ -678,14 +764,19 @@ export class Store extends EventEmitter {
           next.positions[op.scene.id] = point;
         }
       await this.validate(next, this.folder(p.id), p);
+      const unchangedResults =
+        batch.operations.every(
+          (op) => op.type === 'asset-suggestion.result.set',
+        ) && hash(next.assetSuggestions) === hash(p.assetSuggestions);
       const result: MutationResult = {
         success: true,
         projectId: p.id,
-        contentRevision: p.contentRevision + 1,
+        contentRevision: p.contentRevision + (unchangedResults ? 0 : 1),
         affectedIds: [...affected],
         warnings: [],
       };
       if (dryRun) return { ...result, dryRun: true };
+      if (unchangedResults) return result;
       next.contentRevision++;
       next.updatedAt = new Date().toISOString();
       next.receipts.push({ id: batch.requestId, hash: digest, result });

@@ -68,7 +68,7 @@ Scene Loom has no dependency on fish.exe or any other software repository. No cl
 
 ## Develop a project vision
 
-Use **Copy new project starter prompt** in the project menu, or the empty-studio starting prompt. Paste it into your agent and fill in your rough idea; the other fields are optional. The agent develops the concept, asks a few questions, saves a Project Vision, and publishes a small connected starter storyboard. Planned interface scenes default to text, and gameplay scenes use illustrations when available. **Project Vision** opens the saved brief and a prompt to define or refine it. Edit and Continue can take your direction or use agent judgment when left blank. Research and image generation require capabilities in your external agent; naming web checks are preliminary, not legal clearance. See [the enhancement scope](docs/project-vision-scope.md).
+Use **Copy new project starter prompt** in the project menu, or the empty-studio starting prompt. Paste it into your agent and fill in your rough idea; the other fields are optional. The agent develops the concept, asks a few questions, presents a Project Vision and full connected text storyboard for approval, then publishes them together. Games and projects with core 3D work also approve a visualization for Project Vision. **Project Vision** opens the saved brief and a prompt to define or refine it. Edit and Continue can take your direction or use agent judgment when left blank. Research and image generation require capabilities in your external agent; naming web checks are preliminary, not legal clearance. See [the enhancement scope](docs/project-vision-scope.md).
 
 ### Agent and harness compatibility
 
@@ -76,4 +76,4 @@ Scene Loom uses a local CLI and versioned JSON schemas, not a particular AI prov
 
 ### Optional Mesh Foundry handoff
 
-Scene Loom runs as a standalone storyboard studio by default. Open a project's menu beside the Scene Loom logo and turn on **Mesh Foundry handoff** to show **Copy asset-generation prompt** on that project's scene cards. The setting is saved per project and takes effect immediately. Your external agent uses Mesh Foundry when you paste the prompt and confirm the handoff.
+Turn on **Mesh Foundry handoff** in the active storyboard's project menu to use **Copy asset suggestion prompt** in Project Vision. The agent saves suggestions linked to scenes. Those scenes offer **Copy asset-generation prompt** for approved reuse or concept generation in the project's shared Mesh Foundry library. Results are pinned to the active storyboard version.

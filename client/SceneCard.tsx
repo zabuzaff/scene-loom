@@ -8,14 +8,14 @@ import {
 } from '@xyflow/react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUpRight, PencilLine, ChevronDown, Shapes } from 'lucide-react';
-import type { SceneData } from '../shared/schema';
+import type { ProjectData, SceneData } from '../shared/schema';
 export type CardData = {
   scene: SceneData;
   projectId: string;
   number: number;
   expanded: boolean;
   recent: boolean;
-  meshFoundryEnabled: boolean;
+  assetSuggestions?: NonNullable<ProjectData['assetSuggestions']>;
   toggle: (id: string) => void;
   copy: (id: string, action: 'continue' | 'edit' | 'assets') => void;
 };
@@ -33,7 +33,7 @@ export const SceneCard = memo(function SceneCard({
   const fallbackNumber = hasNumberedTitle
     ? ''
     : String(data.number).padStart(2, '0');
-  const showAssetAction = data.meshFoundryEnabled && !!mainAssetId;
+  const showAssetAction = !!data.assetSuggestions?.length;
   const image = (assetId: string, thumbnail = true) =>
     `/api/projects/${data.projectId}/assets/${assetId}${thumbnail ? '?thumbnail=true' : ''}`;
   return (
@@ -115,6 +115,23 @@ export const SceneCard = memo(function SceneCard({
                   <p>{data.scene.notes}</p>
                 </section>
               )}
+              {showAssetAction && (
+                <section>
+                  <h3>Asset suggestions</h3>
+                  {data.assetSuggestions?.map((suggestion) => (
+                    <div key={suggestion.id}>
+                      <strong>{suggestion.name}</strong>
+                      <p>{suggestion.description}</p>
+                      <p>{suggestion.explanation}</p>
+                      {suggestion.result && (
+                        <p>
+                          Mesh Foundry revision {suggestion.result.revisionId}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </section>
+              )}
               {data.scene.supportingAssetIds.length > 0 && (
                 <section>
                   <h3>Supporting visuals</h3>
@@ -177,7 +194,7 @@ export const SceneCard = memo(function SceneCard({
         <div className="scene-asset-action nodrag">
           <button
             aria-label={`Copy asset-generation prompt for ${data.scene.title}`}
-            title="Plan assets from this scene, then create 2D concepts in Mesh Foundry"
+            title="Create 2D concepts from linked suggestions in Mesh Foundry"
             onClick={(e) => {
               e.stopPropagation();
               data.copy(id, 'assets');

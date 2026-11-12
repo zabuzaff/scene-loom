@@ -140,7 +140,12 @@ function CanvasInner({
         s = p.scenes.find((s) => s.id === id);
       if (
         !s ||
-        (action === 'assets' && (!p.meshFoundryEnabled || !s.mainAssetId))
+        (action === 'assets' &&
+          (!p.meshFoundryEnabled ||
+            !p.assetSuggestions?.some(
+              (suggestion) =>
+                !suggestion.retired && suggestion.sceneIds.includes(id),
+            )))
       )
         return;
       try {
@@ -184,7 +189,13 @@ function CanvasInner({
               recent: recent.includes(scene.id),
               toggle,
               copy,
-              meshFoundryEnabled: project.meshFoundryEnabled ?? false,
+              assetSuggestions: project.meshFoundryEnabled
+                ? project.assetSuggestions?.filter(
+                    (suggestion) =>
+                      !suggestion.retired &&
+                      suggestion.sceneIds.includes(scene.id),
+                  )
+                : undefined,
             },
           };
         }),

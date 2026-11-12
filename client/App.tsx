@@ -25,6 +25,7 @@ const Canvas = lazy(() =>
 import {
   api,
   starterPrompt,
+  assetSuggestionPrompt,
   visionPrompt,
   firstStoryboardPrompt,
   repositoryPrompt,
@@ -731,6 +732,14 @@ export function App() {
           project={project}
           close={closeVision}
           copy={() => void copyStart(true, !!project.vision)}
+          copySuggestions={
+            info &&
+            project.id === activeRef.current &&
+            project.meshFoundryEnabled &&
+            project.vision
+              ? () => void copyPrompt(assetSuggestionPrompt(info, project))
+              : undefined
+          }
         />
       )}
       <AnimatePresence>

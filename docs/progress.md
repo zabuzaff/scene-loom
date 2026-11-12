@@ -216,3 +216,10 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Project Vision displays the selected project-owned image. The service rejects missing vision images and prevents the selected image from appearing in scene attachments. Scene prompts reserve new attachments for real project imagery and preserve legacy attachments during text edits.
 - Build, lint, formatting, 19 automated tests, and all five Chrome checks passed. Inspected the approved image in the desktop and narrow Project Vision panels.
 - Follow-up review tightened asset provenance. New scene attachments require the declared `project-image` kind, and new vision image references require `visualization`. Reimports preserve the original classification, and existing unclassified scene attachments remain editable. The starter, scene, and resync prompts now specify the appropriate import kind and distinguish planned scenes from verified scenes with available imagery.
+
+## Storyboard-scoped Mesh Foundry handoff — 2026-11-12
+
+- Project Vision offers the asset suggestion prompt on enabled storyboard versions. Draft suggestions persist on the exact version, link to one or more scenes, and expose their rationale and pinned revision in scene details. A linked text-only scene can copy its generation prompt.
+- Generation uses the Mesh Foundry scoped pin contract. Scene Loom checks the live toggle for suggestion and result mutations, supports repeat result writes, and copies drafts without copying result pins to a new storyboard target.
+- The starter drafts the full agreed text storyboard and requests a saved visualization for games and projects with core 3D work. Development plans and reviews carry both stable IDs.
+- Follow-up review added draft retirement, ordered result writeback using the Mesh Foundry library version, and publication checks for every linked scene. Retired drafts retain their recorded results and disappear from the active handoff.

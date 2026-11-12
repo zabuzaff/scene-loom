@@ -306,7 +306,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     });
     await picker.click();
     await page.reload();
-    await expect(handoffButton).toBeVisible();
+    await expect(handoffButton).toHaveCount(0);
     await expect(
       planningScene.getByRole('button', {
         name: 'Copy asset-generation prompt for The station',
@@ -337,7 +337,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await expect(meshSetting).not.toBeChecked();
     await page.getByRole('button', { name: 'Projects', exact: true }).click();
     await page.getByRole('button', { name: `${title} 2 scenes` }).click();
-    await expect(handoffButton).toBeVisible();
+    await expect(handoffButton).toHaveCount(0);
     await openProjectActions();
     await meshSetting.click();
     await expect(meshSetting).not.toBeChecked();
@@ -370,7 +370,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     });
     await page.setViewportSize({ width: 900, height: 450 });
     await page.reload();
-    await expect(handoffButton).toBeVisible();
+    await expect(handoffButton).toHaveCount(0);
     await picker.click();
     await expect(actions).toBeInViewport({ ratio: 1 });
     const lastProject = page.getByRole('button', {
@@ -453,7 +453,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await page.unroute('**/api/projects');
     await page.setViewportSize(viewport);
     await page.reload();
-    await expect(handoffButton).toBeVisible();
+    await expect(handoffButton).toHaveCount(0);
 
     const beforeHandoff = cli('project', 'read', id).data;
     expect(beforeHandoff).toEqual({
@@ -461,42 +461,9 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       meshFoundryEnabled: true,
     });
     await arrival
-      .getByRole('button', { name: 'Copy asset-generation prompt for Arrival' })
-      .click();
-    const handoff = await page.evaluate(() => navigator.clipboard.readText());
-    expect(handoff).toContain(`Source project: ${title} (${id})`);
-    expect(handoff).toContain('Source scene: Arrival (arrival)');
-    expect(handoff).toContain('WAIT for explicit confirmation');
-    expect(handoff).toContain('reread the Scene Loom source before generating');
-    expect(handoff).toContain(
-      'Immediately before publishing, reread the Scene Loom source again',
-    );
-    expect(handoff).toContain(
-      'Pause publication for any material change and get renewed confirmation',
-    );
-    expect(handoff).toContain(
-      'Open and visually inspect the actual full-resolution main image',
-    );
-    expect(handoff).toContain('Publish only stage "sketch"');
-    expect(handoff).toContain('STOP after the 2D concepts are published');
-    expect(handoff).toContain('SCENE_LOOM_DATA_DIR');
-    await expect(
-      arrival.getByRole('button', { name: 'Open Arrival', exact: true }),
-    ).toHaveAttribute('aria-expanded', 'false');
-    expect(cli('project', 'read', id).data).toEqual(beforeHandoff);
-    await page.screenshot({ path: 'test-results/asset-handoff-collapsed.png' });
-
-    await page
       .getByRole('button', { name: 'Open Arrival', exact: true })
       .click();
     await expect(arrival.getByText('Keep the reveal slow.')).toBeVisible();
-    await arrival
-      .getByRole('button', { name: 'Copy asset-generation prompt for Arrival' })
-      .click();
-    await expect(
-      arrival.getByRole('button', { name: 'Collapse Arrival' }),
-    ).toHaveAttribute('aria-expanded', 'true');
-    await page.screenshot({ path: 'test-results/asset-handoff-expanded.png' });
 
     await arrival.getByRole('button', { name: 'Continue from here' }).click();
     await expect(page.getByRole('status')).toContainText(
@@ -569,7 +536,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       planningScene.getByRole('button', {
         name: 'Copy asset-generation prompt for The station',
       }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     expect(state.positions.station).toEqual(initialProject.positions.station);
     expect(state.vision.summary).toBe(visionFixture.summary);
     await page.reload();
@@ -1325,7 +1292,7 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
       .click();
     prompt = await page.evaluate(() => navigator.clipboard.readText());
     expect(prompt).toContain('Create a NEW software project');
-    expect(prompt).toContain('three to six meaningful scenes');
+    expect(prompt).toContain('Cover the full agreed scope');
     expect(prompt).toContain('default to a text-only planning scene');
     expect(prompt).toContain('CREATIVE VISUALIZATION OPTIONS');
     expect(prompt).toContain('in the same atomic batch');
@@ -1355,7 +1322,7 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
       .click();
     const resume = await page.evaluate(() => navigator.clipboard.readText());
     expect(resume).toContain('Resume from the saved Project Vision');
-    expect(resume).toContain('three to six meaningful scenes');
+    expect(resume).toContain('Cover the full agreed scope');
     expect(resume).toContain('default to a text-only planning scene');
     expect(resume).not.toContain('MAIN IDEA (required)');
     await trigger.click();
@@ -1526,10 +1493,47 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
         {
           type: 'scene.patch',
           id: 'lobby',
-          changes: { title: 'Proposed lobby' },
+          changes: { title: 'Proposed lobby', mainAssetId: null },
         },
       ],
     });
+    cli(['project', 'apply', copyId], {
+      ...batch,
+      projectId: copyId,
+      expectedContentRevision: 1,
+      requestId: 'suggest-lobby',
+      operations: [
+        {
+          type: 'project.vision.set',
+          vision: { ...visionFixture, name: title },
+        },
+        {
+          type: 'asset-suggestion.upsert',
+          suggestion: {
+            id: 'lobby-sign',
+            name: 'Lobby sign',
+            description: 'A directory sign.',
+            explanation: 'Helps visitors find their way.',
+            sceneIds: ['lobby'],
+          },
+        },
+      ],
+    });
+    await page
+      .getByRole('button', { name: 'Project Vision', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'Copy asset suggestion prompt' })
+      .click();
+    const suggestionPrompt = await page.evaluate(() =>
+      navigator.clipboard.readText(),
+    );
+    expect(suggestionPrompt).toContain(`storyboard target ID ${copyId}`);
+    expect(suggestionPrompt).toContain('asset-suggestion.upsert');
+    await page.screenshot({
+      path: 'test-results/vision-asset-suggestions.png',
+    });
+    await page.getByRole('button', { name: 'Close Project Vision' }).click();
     const copyPrompt = page.getByRole('button', {
       name: 'Copy asset-generation prompt for Proposed lobby',
     });
@@ -1539,7 +1543,8 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
     expect(handoff).toContain(
       `Storyboard: 3D Research Office (project ID ${id}, storyboard target ID ${copyId})`,
     );
-    expect(handoff).toContain(`projects/${copyId}/`);
+    expect(handoff).toContain('asset-suggestion.result.set');
+    expect(handoff).toContain('scene-loom.pin');
     const command = handoff.match(
       /^Read scene: (.+) scene read ([\w-]+) ([\w-]+)$/m,
     );
@@ -1547,7 +1552,7 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
     expect(command?.slice(2)).toEqual([copyId, 'lobby']);
     const resolved = cli(['scene', 'read', command![2], command![3]]);
     expect(resolved.scene.title).toBe('Proposed lobby');
-    expect(resolved.scene.mainAssetId).toBe(asset.id);
+    expect(resolved.scene.mainAssetId).toBeNull();
     await page.reload();
     await expect(copyPrompt).toBeVisible();
     await page.setViewportSize({ width: 390, height: 650 });
