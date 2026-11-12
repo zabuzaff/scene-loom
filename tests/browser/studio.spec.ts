@@ -52,7 +52,7 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     })
       .png()
       .toFile(path);
-    nextInput = { path };
+    nextInput = { path, kind: 'project-image' };
     const asset = input('asset', 'import', id).data;
     const scene = (sceneId: string, title: string) => ({
       id: sceneId,
@@ -848,7 +848,10 @@ test('viewer reconnects after a real service restart with owned images and saved
     })
       .png()
       .toFile(image);
-    const asset = await call('projects/restart/assets', { path: image });
+    const asset = await call('projects/restart/assets', {
+      path: image,
+      kind: 'project-image',
+    });
     await call('projects/restart/apply', {
       schemaVersion: 1,
       projectId: 'restart',
@@ -1207,7 +1210,10 @@ test('an unreadable selected project falls back to healthy projects and reports 
     })
       .png()
       .toFile(image);
-    const asset = await call(`projects/${healthy}/assets`, { path: image });
+    const asset = await call(`projects/${healthy}/assets`, {
+      path: image,
+      kind: 'project-image',
+    });
     await call(`projects/${healthy}/apply`, {
       schemaVersion: 1,
       projectId: healthy,
@@ -1321,10 +1327,13 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
     expect(prompt).toContain('Create a NEW software project');
     expect(prompt).toContain('three to six meaningful scenes');
     expect(prompt).toContain('default to a text-only planning scene');
-    expect(prompt).toContain(
-      'use a game-style illustration for gameplay scenes',
-    );
+    expect(prompt).toContain('CREATIVE VISUALIZATION OPTIONS');
+    expect(prompt).toContain('in the same atomic batch');
     expect(prompt).not.toContain(id);
+    const { data: visualization } = cliInput(['asset', 'import', id], {
+      path: join(process.cwd(), 'public', 'icon-512.png'),
+      kind: 'visualization',
+    });
     cliInput(['project', 'apply', id], {
       schemaVersion: 1,
       projectId: id,
@@ -1333,7 +1342,11 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
       operations: [
         {
           type: 'project.vision.set',
-          vision: { ...visionFixture, name: `Job Lantern ${id.slice(-6)}` },
+          vision: {
+            ...visionFixture,
+            name: `Job Lantern ${id.slice(-6)}`,
+            visualizationAssetId: visualization.id,
+          },
         },
       ],
     });
@@ -1346,6 +1359,16 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
     expect(resume).toContain('default to a text-only planning scene');
     expect(resume).not.toContain('MAIN IDEA (required)');
     await trigger.click();
+    const approvedImage = panel.getByRole('img');
+    await expect(approvedImage).toBeVisible();
+    await expect
+      .poll(() =>
+        approvedImage.evaluate((image: HTMLImageElement) => image.naturalWidth),
+      )
+      .toBeGreaterThan(0);
+    await page.screenshot({
+      path: 'test-results/approved-project-visualization.png',
+    });
     await expect(
       panel.getByRole('heading', { name: 'Confirmed decisions' }),
     ).toBeVisible();
@@ -1366,7 +1389,11 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
       operations: [
         {
           type: 'project.vision.set',
-          vision: { ...visionFixture, summary: 'A'.repeat(600) },
+          vision: {
+            ...visionFixture,
+            summary: 'A'.repeat(600),
+            visualizationAssetId: visualization.id,
+          },
         },
       ],
     });
@@ -1392,6 +1419,7 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
     await expect(
       panel.getByText('A'.repeat(600), { exact: true }),
     ).toBeVisible();
+    await expect(approvedImage).toBeVisible();
   } finally {
     await rm(join('/private/tmp/scene-loom-browser-tests', 'projects', id), {
       recursive: true,
@@ -1434,7 +1462,10 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
     })
       .png()
       .toFile(image);
-    const asset = cli(['asset', 'import', id], { path: image });
+    const asset = cli(['asset', 'import', id], {
+      path: image,
+      kind: 'project-image',
+    });
     const batch = {
       schemaVersion: 1,
       projectId: id,

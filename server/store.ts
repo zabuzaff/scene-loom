@@ -30,6 +30,7 @@ import {
   Viewport,
   type ProjectData,
   type BatchData,
+  type AssetKind,
   type ProjectSummary,
 } from '../shared/schema.js';
 
@@ -343,7 +344,7 @@ export class Store extends EventEmitter {
       return this.read(id);
     });
   }
-  async importAsset(id: string, path: string) {
+  async importAsset(id: string, path: string, kind?: AssetKind) {
     return this.serial(async () => {
       const p = await this.load(id);
       if (!isAbsolute(path))
@@ -360,17 +361,49 @@ export class Store extends EventEmitter {
         fail('INVALID_ASSET', 'Images must be regular files up to 30 MB.');
       const data = await readFile(path);
       const assetId = `asset_${createHash('sha256').update(data).digest('hex').slice(0, 32)}`;
-      if (p.assets[assetId]) {
-        const a = p.assets[assetId];
+      const existing = p.assets[assetId];
+      const existingKind =
+        p.vision?.visualizationAssetId === assetId
+          ? 'visualization'
+          : existing?.kind;
+      if (kind && existingKind && kind !== existingKind)
+        fail(
+          'ASSET_KIND_CONFLICT',
+          'These image bytes already have a different asset kind.',
+        );
+      const assetKind = existingKind ?? kind;
+      if (
+        assetKind === 'visualization' &&
+        p.scenes.some(
+          (scene) =>
+            scene.mainAssetId === assetId ||
+            scene.supportingAssetIds.includes(assetId),
+        )
+      )
+        fail(
+          'ASSET_KIND_CONFLICT',
+          'These image bytes are already attached to a scene.',
+        );
+      if (existing) {
         const complete = await Promise.all(
-          [a.path, a.thumbnailPath, `assets/${assetId}.source`].map((file) =>
+          [
+            existing.path,
+            existing.thumbnailPath,
+            `assets/${assetId}.source`,
+          ].map((file) =>
             stat(join(this.folder(id), file)).then(
               () => true,
               () => false,
             ),
           ),
         );
-        if (complete.every(Boolean)) return a;
+        if (complete.every(Boolean)) {
+          if (existing.kind === assetKind) return existing;
+          const classified = { ...existing, kind: assetKind };
+          p.assets[assetId] = classified;
+          await atomicWrite(join(this.folder(id), 'project.json'), p);
+          return classified;
+        }
       }
       const dir = this.folder(id);
       await mkdir(join(dir, 'assets'), { recursive: true });
@@ -426,13 +459,18 @@ export class Store extends EventEmitter {
         width: meta!.width!,
         height: meta!.height!,
         originalFilename: basename(path),
+        kind: assetKind,
       };
       p.assets[assetId] = asset;
       await atomicWrite(join(dir, 'project.json'), p);
       return asset;
     });
   }
-  private async validate(p: State, folder = this.folder(p.id)) {
+  private async validate(
+    p: State,
+    folder = this.folder(p.id),
+    previous?: State,
+  ) {
     StoredState.parse(p);
     const scenes = new Set(p.scenes.map((s) => s.id));
     if (
@@ -443,29 +481,73 @@ export class Store extends EventEmitter {
         'DUPLICATE_ID',
         'Scene and connection IDs must be unique within their collection.',
       );
+    const visualizationId = p.vision?.visualizationAssetId;
+    const checkImage = async (id: string, owner: string, sceneId?: string) => {
+      const asset = p.assets[id];
+      if (!asset)
+        fail(
+          'MISSING_ASSET',
+          `${owner} references unimported image ${id}.`,
+          400,
+          'Import the image, then use the returned asset ID.',
+          sceneId,
+        );
+      await stat(join(folder, asset.path)).catch(() =>
+        fail(
+          'MISSING_ASSET',
+          `Stored image ${id} is missing.`,
+          400,
+          'Restore the missing project asset.',
+          sceneId,
+        ),
+      );
+      return asset;
+    };
+    if (visualizationId) {
+      const asset = await checkImage(visualizationId, 'Project Vision');
+      if (
+        previous &&
+        visualizationId !== previous.vision?.visualizationAssetId &&
+        asset.kind !== 'visualization'
+      )
+        fail(
+          'INVALID_ASSET_KIND',
+          'Import the Project Vision image with kind visualization.',
+        );
+    }
+    const previousScenes = new Map(
+      previous?.scenes.map((scene) => [scene.id, scene]),
+    );
+
     for (const scene of p.scenes) {
       const imageIds = scene.mainAssetId
         ? [scene.mainAssetId, ...scene.supportingAssetIds]
         : scene.supportingAssetIds;
+      const priorScene = previousScenes.get(scene.id);
       for (const id of imageIds) {
-        const asset = p.assets[id];
-        if (!asset)
+        if (id === visualizationId)
           fail(
-            'MISSING_ASSET',
-            `Scene ${scene.id} references unimported image ${id}.`,
+            'VISION_IMAGE_IN_SCENE',
+            'The approved visualization belongs to Project Vision.',
             400,
-            'Import the image, then use the returned asset ID.',
+            'Use real project imagery for scene attachments.',
             scene.id,
           );
-        await stat(join(folder, asset.path)).catch(() =>
+        const asset = await checkImage(id, `Scene ${scene.id}`, scene.id);
+        const alreadyAttached =
+          priorScene?.mainAssetId === id ||
+          priorScene?.supportingAssetIds.includes(id);
+        if (
+          asset.kind === 'visualization' ||
+          (previous && !alreadyAttached && asset.kind !== 'project-image')
+        )
           fail(
-            'MISSING_ASSET',
-            `Stored image ${id} is missing.`,
+            'INVALID_ASSET_KIND',
+            `Scene ${scene.id} requires real project imagery for new attachments.`,
             400,
-            'Restore the missing project asset.',
+            'Import a verified screenshot or actual project asset with kind project-image.',
             scene.id,
-          ),
-        );
+          );
       }
     }
     for (const c of p.connections)
@@ -514,6 +596,12 @@ export class Store extends EventEmitter {
           'Read current project state and retry with a new request ID and updated revision.',
         );
       const next: State = structuredClone(p);
+      const priorVisualizationId = p.vision?.visualizationAssetId;
+      const priorVisualization = priorVisualizationId
+        ? next.assets[priorVisualizationId]
+        : undefined;
+      if (priorVisualization && !priorVisualization.kind)
+        priorVisualization.kind = 'visualization';
       const affected = new Set<string>();
       for (const [index, op] of batch.operations.entries()) {
         if (op.type === 'project.vision.set') {
@@ -589,7 +677,7 @@ export class Store extends EventEmitter {
           }
           next.positions[op.scene.id] = point;
         }
-      await this.validate(next);
+      await this.validate(next, this.folder(p.id), p);
       const result: MutationResult = {
         success: true,
         projectId: p.id,

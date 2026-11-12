@@ -75,6 +75,16 @@ export function VisionPanel({
                 : 'Provisional agent choice'}
             </small>
           </section>
+          {vision.visualizationAssetId && (
+            <section>
+              <h3>Approved visualization</h3>
+              <img
+                className="vision-visualization"
+                src={`/api/projects/${project.id}/assets/${vision.visualizationAssetId}`}
+                alt={vision.visualDirection || 'Approved project visualization'}
+              />
+            </section>
+          )}
           {sections.map(([key, label]) =>
             vision[key] ? (
               <section key={key}>

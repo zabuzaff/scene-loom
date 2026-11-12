@@ -136,11 +136,9 @@ export async function createApp(options: {
       !req.headers.authorization?.startsWith('Bearer ')
     )
       fail('CLI_ONLY', 'Import local files using the agent CLI.', 403);
+    const { path, kind } = ImportAsset.parse(req.body);
     return ok(
-      await store.importAsset(
-        (req.params as { id: string }).id,
-        ImportAsset.parse(req.body).path,
-      ),
+      await store.importAsset((req.params as { id: string }).id, path, kind),
     );
   });
   app.post('/api/projects/:id/apply', async (req) => {

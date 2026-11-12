@@ -41,7 +41,7 @@ npm --silent run cli -- asset import PROJECT_ID /absolute/asset-input.json
 
 Project input: `{ "id": "my_game", "title": "My game" }`. ID is optional on creation; keep the returned ID.
 
-Asset input: `{ "path": "/absolute/local/image.png" }`. Use static PNG, JPEG, WebP, or AVIF, at most 30 MB and 40 million pixels. The service decodes the image, owns its copies, generates a thumbnail, and returns an asset ID. SVG and animated images are rejected. Reimporting the same bytes returns the existing ID and repairs missing derived files. Main and supporting images are optional. Every referenced image must be imported.
+Asset input: `{ "path": "/absolute/local/image.png", "kind": "project-image" }`. Use `project-image` for verified screenshots and actual project assets. Use `visualization` for creative visualizations. New scene attachments require `project-image`, and new Project Vision image references require `visualization`. Imports without a kind remain unclassified until reimported with an explicit kind. Existing attachments can stay in place. The service enforces the declared kind, which callers must supply accurately. Use static PNG, JPEG, WebP, or AVIF, at most 30 MB and 40 million pixels. The service decodes the image, owns its copies, generates a thumbnail, and returns an asset ID. SVG and animated images are rejected. Reimporting the same bytes returns the existing ID and repairs missing derived files. Once classified, an image cannot be reimported with a conflicting kind in the same storyboard. Main and supporting images are optional. Every referenced image must be imported.
 
 Import all needed images before reading the revision and preparing a batch. Import updates the asset manifest but does not advance the storyboard content revision. Exact supplied bytes are retained as `.source`; normalized display copies are WebP. The viewer's full-image link opens the full-resolution display copy.
 
@@ -184,13 +184,13 @@ Discover the complete vision schema with `schema project` or `schema batch`. Exi
 }
 ```
 
-All fields shown are required. Text fields accept up to 50,000 characters except `name` and `projectType` (200); references accept up to 50 HTTP(S) URLs with relevance notes (2,000 characters). `namingCheck.checkedAt` is an optional ISO date (`YYYY-MM-DD`). Use `nameStatus: "confirmed"` for a creator-confirmed name; delegated agent choices may remain `provisional`. References store naming research links as well as design inspiration, with relevance notes identifying their purpose. The existing 4 MB batch limit applies.
+All fields shown are required. The optional `visualizationAssetId` references a decoded image imported into the same storyboard target. It appears in Project Vision and cannot be used as a scene attachment in that storyboard. Text fields accept up to 50,000 characters except `name` and `projectType` (200); references accept up to 50 HTTP(S) URLs with relevance notes (2,000 characters). `namingCheck.checkedAt` is an optional ISO date (`YYYY-MM-DD`). Use `nameStatus: "confirmed"` for a creator-confirmed name; delegated agent choices may remain `provisional`. References store naming research links as well as design inspiration, with relevance notes identifying their purpose. The existing 4 MB batch limit applies.
 
 Use the normal `project apply` command with a unique request ID and current content revision. Dry runs, deduplication, conflicts, atomicity, notifications, and recovery snapshots work exactly as for scenes. Vision-only mutations return no scene IDs in `affectedIds`. They preserve layout and viewport. Vision and scenes can also be published in one atomic batch after importing images.
 
 For discovery, ask a few consequential questions with concrete suggested answers, a recommendation, and free-text/delegate options. Preserve original intent and distinguish confirmed decisions from assumptions. If no name is supplied, develop meaningful expressive options and screen the web for obvious exact/near-name collisions with established related products when browsing is available. Record links, date, and limits; never claim legal availability from web searching.
 
-Save the vision before publishing a starter storyboard. If no scenes exist, aim for three to six scenes covering one core journey and publish them with their connections in one batch after discovery. Use hierarchical title prefixes such as `1.2 — Manage my household` for primary branches. Existing-project vision adoption preserves existing scenes.
+The starter template asks for the number of creative visualizations per round, defaulting to three. Generate and review options externally, repeat on request, and wait for explicit approval of the chosen image, complete vision, and draft storyboard. Import only the selected image. For an empty storyboard, publish the vision, three to six connected text-only scenes, and their connections in one batch. Use hierarchical title prefixes such as `1.2 — Manage my household` for primary branches. Existing-project vision adoption preserves existing scenes.
 
 Edit/Continue prompts read current vision and content. Blank direction delegates creative judgment: improve the selected scene deliberately or add one useful connected next scene, respectively. Respect confirmed foundations and exclusions, preserve unrelated content/positions, and reuse images for appropriate text-only changes. Refine vision updates only the brief unless scene changes are explicitly requested; explain possible scene mismatches in the external conversation.
 
@@ -208,7 +208,7 @@ The project read model may contain `meshFoundryEnabled`. Older projects may omit
 
 ## Storyboard image fidelity
 
-Starter, First Scene, Edit, and Continue use project type and scene purpose to choose imagery. Planned or unverified interface scenes default to text. Capture the user goal, action, system response, and relevant states. Keep approved brand cues in Project Vision and leave composition open. On request, add a low-fidelity black-and-white paper wireframe. Gameplay scenes use game-style illustrations when available. Resync can attach verified screenshots to the same scene later.
+Starter, First Scene, Edit, and Continue reserve scene image slots for real project imagery. Planned and unverified scenes default to text describing the user goal, action, system response, and relevant states. The approved generated visualization belongs in Project Vision. Resync can attach verified screenshots to the same scene later.
 
 ## Development and repository resync
 

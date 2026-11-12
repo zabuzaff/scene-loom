@@ -1076,6 +1076,12 @@ kbd {
   font-size: 16px;
   margin: 0 0 8px;
 }
+.vision-visualization {
+  display: block;
+  max-width: 100%;
+  max-height: min(360px, 45vh);
+  border-radius: 12px;
+}
 .vision-panel section p {
   white-space: pre-wrap;
   margin: 8px 0;

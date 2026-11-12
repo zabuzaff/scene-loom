@@ -34,7 +34,10 @@ try {
   for (const path of images) {
     await readFile(resolve(path));
     assets.push(
-      await run(['asset', 'import', project.id], { path: resolve(path) }),
+      await run(['asset', 'import', project.id], {
+        path: resolve(path),
+        kind: 'project-image',
+      }),
     );
   }
   const titles = [

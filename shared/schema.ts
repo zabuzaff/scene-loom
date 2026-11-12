@@ -25,6 +25,7 @@ export const Connection = z.strictObject({
   targetSceneId: Id,
   label: z.string().max(200).optional(),
 });
+const AssetKind = z.enum(['project-image', 'visualization']);
 export const Asset = z.strictObject({
   id: Id,
   path: z.string(),
@@ -33,6 +34,7 @@ export const Asset = z.strictObject({
   width: z.number(),
   height: z.number(),
   originalFilename: z.string(),
+  kind: AssetKind.optional(),
 });
 export const ProjectVision = z.strictObject({
   name: z.string().trim().min(1).max(200),
@@ -49,6 +51,7 @@ export const ProjectVision = z.strictObject({
   exclusions: Text,
   creativePillars: Text,
   visualDirection: Text,
+  visualizationAssetId: Id.optional(),
   constraints: Text,
   confirmedDecisions: Text,
   assumptions: Text,
@@ -158,7 +161,11 @@ export const CreateProject = z.strictObject({
   id: Id.optional(),
   title: z.string().trim().min(1).max(200),
 });
-export const ImportAsset = z.strictObject({ path: z.string().min(1) });
+export const ImportAsset = z.strictObject({
+  path: z.string().min(1),
+  kind: AssetKind.optional(),
+});
+export type AssetKind = z.infer<typeof AssetKind>;
 const BackupId = z.string().regex(/^[a-zA-Z0-9_-]+\.json$/);
 export const Restore = z.union([
   z.strictObject({

@@ -209,3 +209,10 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - The project menu now copies separate prompts for planning, independent review, and implementation. Planning puts researched decisions and acceptance checks in the target repo's Markdown. Review returns findings and a verdict tied to the files it read. Start development requires a matching review before coding.
 
 - Review follow-up. Start development requires a Ready verdict with a matching SHA-256 digest for every plan file. Planning and review cover the same applicable build requirements. Cards with hierarchical title prefixes display that number once, while older titles retain their positional badge.
+
+## Project Vision visualization approval — 2026-11-12
+
+- The starter asks how many visualizations to review per round, defaults to three, and supports repeat rounds in the external agent conversation. Explicit creator approval gates one content batch for the selected visualization, vision, and connected text storyboard. Existing storyboard adoption preserves its scenes.
+- Project Vision displays the selected project-owned image. The service rejects missing vision images and prevents the selected image from appearing in scene attachments. Scene prompts reserve new attachments for real project imagery and preserve legacy attachments during text edits.
+- Build, lint, formatting, 19 automated tests, and all five Chrome checks passed. Inspected the approved image in the desktop and narrow Project Vision panels.
+- Follow-up review tightened asset provenance. New scene attachments require the declared `project-image` kind, and new vision image references require `visualization`. Reimports preserve the original classification, and existing unclassified scene attachments remain editable. The starter, scene, and resync prompts now specify the appropriate import kind and distinguish planned scenes from verified scenes with available imagery.

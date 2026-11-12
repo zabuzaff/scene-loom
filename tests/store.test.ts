@@ -18,7 +18,7 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
     .toFile(image);
   const store = new Store(root);
   await store.create({ id: 'test', title: 'Test world' });
-  const asset = await store.importAsset('test', image);
+  const asset = await store.importAsset('test', image, 'project-image');
   const scene = (id: string) => ({
     id,
     title: id,
@@ -510,6 +510,151 @@ test('library listing exposes damaged projects without hiding healthy projects',
     assert.equal(broken.error.code, 'CORRUPT_PROJECT');
     assert.equal((await store.read('test')).title, 'Test world');
   }
+});
+
+test('approved visualization and text scenes publish together using a project-owned image', async (t) => {
+  const { visionFixture } = await import('./vision-fixture.js');
+  const { store, root, scene, batch } = await fixture(t);
+  const path = join(root, 'concept.png');
+  await sharp({
+    create: { width: 32, height: 24, channels: 3, background: '#553344' },
+  })
+    .png()
+    .toFile(path);
+  const unclassified = await store.importAsset('test', path);
+  const vision = { ...visionFixture, visualizationAssetId: unclassified.id };
+  await assert.rejects(
+    store.apply(
+      batch([
+        {
+          type: 'scene.create',
+          scene: { ...scene('plan'), mainAssetId: unclassified.id },
+        },
+      ]),
+    ),
+    { code: 'INVALID_ASSET_KIND' },
+  );
+  const asset = await store.importAsset('test', path, 'visualization');
+  assert.equal(asset.id, unclassified.id);
+  await assert.rejects(store.importAsset('test', path, 'project-image'), {
+    code: 'ASSET_KIND_CONFLICT',
+  });
+  await assert.rejects(
+    store.apply(
+      batch([
+        {
+          type: 'scene.create',
+          scene: { ...scene('plan'), supportingAssetIds: [asset.id] },
+        },
+      ]),
+    ),
+    { code: 'INVALID_ASSET_KIND' },
+  );
+  const planned = { ...scene('plan'), mainAssetId: undefined };
+  await assert.rejects(
+    store.apply(
+      batch([
+        {
+          type: 'project.vision.set',
+          vision: { ...vision, visualizationAssetId: 'missing' },
+        },
+        { type: 'scene.create', scene: planned },
+      ]),
+    ),
+    { code: 'MISSING_ASSET' },
+  );
+  await assert.rejects(
+    store.apply(
+      batch([
+        { type: 'project.vision.set', vision },
+        {
+          type: 'scene.create',
+          scene: { ...scene('plan'), mainAssetId: asset.id },
+        },
+      ]),
+    ),
+    { code: 'VISION_IMAGE_IN_SCENE' },
+  );
+  const before = await store.read('test');
+  assert.equal(before.vision, undefined);
+  assert.deepEqual(before.scenes, []);
+  await store.apply(
+    batch([
+      { type: 'project.vision.set', vision },
+      { type: 'scene.create', scene: planned },
+    ]),
+  );
+  const saved = await new Store(root).read('test');
+  assert.deepEqual(saved.vision, vision);
+  assert.equal(saved.scenes.length, 1);
+  assert.equal(saved.scenes[0].id, planned.id);
+  assert.equal(saved.scenes[0].mainAssetId, undefined);
+  await store.apply(
+    batch(
+      [{ type: 'project.vision.set', vision: visionFixture }],
+      1,
+      'retire_visualization',
+    ),
+  );
+  await assert.rejects(
+    store.apply(
+      batch(
+        [
+          {
+            type: 'scene.patch',
+            id: planned.id,
+            changes: { mainAssetId: asset.id },
+          },
+        ],
+        2,
+        'attach_retired',
+      ),
+    ),
+    { code: 'INVALID_ASSET_KIND' },
+  );
+});
+
+test('legacy attachments remain editable without classifying them as scene imagery', async (t) => {
+  const { store, root, image, asset, scene, batch } = await fixture(t);
+  await store.apply(batch([{ type: 'scene.create', scene: scene('legacy') }]));
+  const projectPath = join(root, 'projects/test/project.json');
+  const legacy = JSON.parse(await readFile(projectPath, 'utf8'));
+  delete legacy.assets[asset.id].kind;
+  await writeFile(projectPath, JSON.stringify(legacy));
+
+  await assert.rejects(store.importAsset('test', image, 'visualization'), {
+    code: 'ASSET_KIND_CONFLICT',
+  });
+  await store.apply(
+    batch(
+      [
+        {
+          type: 'scene.patch',
+          id: 'legacy',
+          changes: { notes: 'Still editable' },
+        },
+      ],
+      1,
+      'edit_legacy',
+    ),
+  );
+  await assert.rejects(
+    store.apply(
+      batch([{ type: 'scene.create', scene: scene('new') }], 2, 'reuse_legacy'),
+    ),
+    { code: 'INVALID_ASSET_KIND' },
+  );
+  assert.equal(
+    (await store.importAsset('test', image, 'project-image')).id,
+    asset.id,
+  );
+  await store.apply(
+    batch(
+      [{ type: 'scene.create', scene: scene('new') }],
+      2,
+      'reuse_classified',
+    ),
+  );
 });
 
 test('vision batches preserve old models, publish atomically, replay, survive restart and restore snapshots', async (t) => {
