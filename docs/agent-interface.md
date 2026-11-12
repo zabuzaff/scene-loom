@@ -13,11 +13,23 @@ npm --silent run cli -- schema project
 npm --silent run cli -- project list
 ```
 
-Schemas are available for `batch`, `project`, `layout`, `createProject`, `importAsset`, `restore`, and `viewport`. `schema` and help work without the service. Other commands read `runtime.json` from the active data directory. Set the same absolute `SCENE_LOOM_DATA_DIR` used by the service; no explicit token or port is needed in a prompt.
+Schemas are available for `batch`, `project`, `layout`, `createProject`, `createStoryboard`, `importAsset`, `restore`, and `viewport`. `schema` and help work without the service. Other commands read `runtime.json` from the active data directory. Set the same absolute `SCENE_LOOM_DATA_DIR` used by the service; no explicit token or port is needed in a prompt.
 
 Project listing returns a summary per project with `status: "ready"` for readable projects, including `sceneCount` and `updatedAt`. Damaged or missing project files return `status: "unreadable"` with the project folder ID and a structured `error`; they do not block other projects. Use the listed ID with backup/recovery commands. The studio marks unreadable entries as needing recovery and selects only readable projects.
 
 All results use `{ "success": true, "data": ... }`. Errors use `{ "success": false, "error": { "code", "message", "location"?, "suggestion" } }` and a nonzero exit status. Transport/input failures use `CLI_ERROR`. Write creative text into JSON files or stdin, not interpolated shell arguments. Every mutation takes a JSON file path or `-` for stdin.
+
+## Create and target a named storyboard
+
+An existing project ID also addresses its Baseline storyboard. `project list` groups named copies under the owning project's optional `storyboards` array, with each copy's ID, name, and readiness. The CLI commands that take a project ID also accept a storyboard target ID. For batches, use that same target ID in the `projectId` field and read the target's current revision before publishing.
+
+```sh
+npm --silent run cli -- storyboard create SOURCE_TARGET_ID /absolute/storyboard-input.json
+npm --silent run cli -- project read STORYBOARD_TARGET_ID
+npm --silent run cli -- scene read STORYBOARD_TARGET_ID SCENE_ID
+```
+
+Use `{"name":"3D Research Office"}` as the creation input. Names are unique within the software project, including the reserved Baseline name. The result includes the new target ID and `storyboard` metadata identifying the owning project, source target, and source content revision at copy time. A copy starts with its own revision counters, backups, and viewport. It inherits scenes, connections, card positions, vision, settings, and owned images. Later changes are independent. Shared scene IDs can exist on multiple storyboards, so use the exact target from the prompt for every read and write. Resolve owned image paths under `SCENE_LOOM_DATA_DIR/projects/STORYBOARD_TARGET_ID/`.
 
 ## Create a project and import images
 

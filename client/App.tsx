@@ -1,5 +1,6 @@
 import {
   lazy,
+  type FormEvent,
   Suspense,
   useCallback,
   useEffect,
@@ -30,11 +31,16 @@ import {
   type AgentInfo,
 } from './api';
 import { VisionPanel } from './VisionPanel';
+import { BaselineName } from '../shared/storyboard';
 import type {
   ProjectData,
   ViewportData,
   ProjectSummary,
 } from '../shared/schema';
+function readyTarget(project: ProjectSummary) {
+  if (project.status === 'ready') return project.id;
+  return project.storyboards?.find((item) => item.status === 'ready')?.id;
+}
 export function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]),
     [project, setProject] = useState<ProjectData | null>(null),
@@ -47,6 +53,9 @@ export function App() {
     [projectQuery, setProjectQuery] = useState(''),
     [focusedProject, setFocusedProject] = useState<string | null>(null),
     [projectActions, setProjectActions] = useState(false),
+    [storyboardName, setStoryboardName] = useState(''),
+    [copyingStoryboard, setCopyingStoryboard] = useState(false),
+    [storyboardError, setStoryboardError] = useState(''),
     [savingSettings, setSavingSettings] = useState(false),
     [notice, setNotice] = useState(''),
     [error, setError] = useState(''),
@@ -65,6 +74,8 @@ export function App() {
     setProjectQuery('');
     setFocusedProject(null);
     setProjectActions(false);
+    setStoryboardName('');
+    setStoryboardError('');
     if (restoreFocus) triggerRef.current?.focus();
   }, []);
   useEffect(() => {
@@ -103,13 +114,18 @@ export function App() {
   const refresh = useCallback(async () => {
     const version = ++requestVersion.current;
     const list = await api<ProjectSummary[]>('projects');
-    const available = list.filter((p) => p.status === 'ready');
+    const targets = list.flatMap((p) => [
+      ...(p.status === 'ready' ? [p.id] : []),
+      ...(p.storyboards ?? [])
+        .filter((item) => item.status === 'ready')
+        .map((item) => item.id),
+    ]);
     if (version !== requestVersion.current) return;
     setProjects(list);
     const id =
-      activeRef.current && available.some((p) => p.id === activeRef.current)
+      activeRef.current && targets.includes(activeRef.current)
         ? activeRef.current
-        : (available[0]?.id ?? null);
+        : (targets[0] ?? null);
     if (id !== activeRef.current) {
       activeRef.current = id;
       setActive(id);
@@ -222,7 +238,7 @@ export function App() {
         ? visionPrompt(info, project)
         : existing && project?.vision
           ? firstStoryboardPrompt(info, project)
-          : starterPrompt(info, existing ? project?.id : undefined),
+          : starterPrompt(info, existing ? (project ?? undefined) : undefined),
     );
   }
   function copyRepositoryPrompt(
@@ -239,13 +255,54 @@ export function App() {
       )
     : [];
   const tabStop =
-    matchingProjects.find(
-      (p) => p.id === focusedProject && p.status === 'ready',
-    ) ?? matchingProjects.find((p) => p.status === 'ready');
+    matchingProjects.find((p) => p.id === focusedProject && readyTarget(p)) ??
+    matchingProjects.find(readyTarget);
+  const currentProjectId = project?.storyboard?.projectId ?? project?.id;
+  const currentProject = projects.find((p) => p.id === currentProjectId);
   function openProject(id: string) {
-    activeRef.current = id;
-    setActive(id);
+    if (id !== activeRef.current) {
+      requestVersion.current++;
+      activeRef.current = id;
+      setActive(id);
+      setLoading(true);
+      setVisionOpen(false);
+    }
     closePicker();
+  }
+  function selectProject(summary: ProjectSummary) {
+    const target =
+      summary.id === currentProjectId && project?.id === activeRef.current
+        ? project.id
+        : readyTarget(summary);
+    if (target) openProject(target);
+  }
+  async function copyStoryboard(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      !project ||
+      project.id !== activeRef.current ||
+      copyingStoryboard ||
+      currentProject?.status !== 'ready'
+    )
+      return;
+    const sourceId = project.id;
+    setCopyingStoryboard(true);
+    setStoryboardError('');
+    try {
+      const copy = await api<ProjectData>(
+        `projects/${sourceId}/storyboards`,
+        'POST',
+        {
+          name: storyboardName,
+        },
+      );
+      if (activeRef.current === sourceId) openProject(copy.id);
+      notify(`Created storyboard “${copy.storyboard?.name}”.`);
+    } catch (error) {
+      setStoryboardError((error as Error).message);
+    } finally {
+      setCopyingStoryboard(false);
+    }
   }
   return (
     <main className="studio">
@@ -293,7 +350,12 @@ export function App() {
             aria-controls={picker ? 'project-switcher' : undefined}
             onClick={() => (picker ? closePicker() : setPicker(true))}
           >
-            <span>{project?.title ?? 'Your projects'}</span>
+            <span className="project-trigger-label">
+              <span>{project?.title ?? 'Your projects'}</span>
+              {project && (
+                <small>{project.storyboard?.name ?? BaselineName}</small>
+              )}
+            </span>
             <ChevronDown size={15} />
           </button>
           {picker && (
@@ -379,10 +441,8 @@ export function App() {
                         if (event.nativeEvent.isComposing) return;
                         if (event.key === 'Enter') {
                           event.preventDefault();
-                          const match = matchingProjects.find(
-                            (p) => p.status === 'ready',
-                          );
-                          if (match) openProject(match.id);
+                          const match = matchingProjects.find(readyTarget);
+                          if (match) selectProject(match);
                         }
                         if (event.key === 'ArrowDown') {
                           event.preventDefault();
@@ -428,14 +488,16 @@ export function App() {
                         key={p.id}
                         tabIndex={p.id === tabStop?.id ? 0 : -1}
                         onFocus={() => setFocusedProject(p.id)}
-                        disabled={p.status === 'unreadable'}
+                        disabled={!readyTarget(p)}
                         title={
                           p.status === 'unreadable'
                             ? p.error.suggestion
                             : undefined
                         }
-                        aria-current={active === p.id ? 'true' : undefined}
-                        onClick={() => openProject(p.id)}
+                        aria-current={
+                          currentProjectId === p.id ? 'true' : undefined
+                        }
+                        onClick={() => selectProject(p)}
                       >
                         <span>
                           {p.title}
@@ -445,7 +507,7 @@ export function App() {
                               : 'Needs recovery'}
                           </small>
                         </span>
-                        {active === p.id && <Check size={15} />}
+                        {currentProjectId === p.id && <Check size={15} />}
                       </button>
                     ))}
                     {!matchingProjects.length && (
@@ -456,6 +518,70 @@ export function App() {
                       </p>
                     )}
                   </div>
+                  {currentProject && project?.id === active && (
+                    <div className="storyboard-controls">
+                      <div className="storyboard-label" id="storyboard-label">
+                        Storyboards
+                      </div>
+                      <div
+                        className="storyboard-list"
+                        role="group"
+                        aria-labelledby="storyboard-label"
+                      >
+                        {[
+                          {
+                            id: currentProject.id,
+                            name: BaselineName,
+                            status: currentProject.status,
+                          },
+                          ...(currentProject.storyboards ?? []),
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            aria-current={
+                              item.id === active ? 'true' : undefined
+                            }
+                            disabled={item.status === 'unreadable'}
+                            onClick={() => openProject(item.id)}
+                          >
+                            <span>
+                              {item.name}
+                              {item.status === 'unreadable' && (
+                                <small>Needs recovery</small>
+                              )}
+                            </span>
+                            {item.id === active && (
+                              <Check size={15} aria-hidden="true" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      <form onSubmit={(event) => void copyStoryboard(event)}>
+                        <input
+                          aria-label="New storyboard name"
+                          placeholder="New storyboard name"
+                          required
+                          disabled={currentProject.status === 'unreadable'}
+                          maxLength={80}
+                          value={storyboardName}
+                          onChange={(event) =>
+                            setStoryboardName(event.target.value)
+                          }
+                        />
+                        <button
+                          disabled={
+                            copyingStoryboard ||
+                            !storyboardName.trim() ||
+                            currentProject.status === 'unreadable'
+                          }
+                        >
+                          {copyingStoryboard ? 'Copying…' : 'Create copy'}
+                        </button>
+                      </form>
+                      {storyboardError && <p role="alert">{storyboardError}</p>}
+                    </div>
+                  )}
                   <div className="project-menu-footer">
                     <button
                       disabled={!info}
@@ -494,7 +620,6 @@ export function App() {
             Project Vision
           </button>
         )}
-        <span className="header-canvas-label">Canvas</span>
         <div className="header-right">
           <span className={`connection-status ${connected ? 'online' : ''}`}>
             <i />
@@ -519,9 +644,11 @@ export function App() {
             .map((p) => p.title)
             .join(', ')}
           : needs recovery.{' '}
-          {projects.some((p) => p.status === 'ready')
-            ? 'Other projects remain available.'
-            : 'Use your agent to recover your projects or start a new one.'}
+          {projects.some((p) => p.status === 'unreadable' && readyTarget(p))
+            ? 'Healthy storyboard copies remain available.'
+            : projects.some(readyTarget)
+              ? 'Other projects remain available.'
+              : 'Use your agent to recover your projects or start a new one.'}
         </div>
       )}
       {error && (

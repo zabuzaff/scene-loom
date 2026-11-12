@@ -1,5 +1,16 @@
 # Progress and continuation
 
+## Named storyboards — 2026-11-12
+
+- Healthy copies remain selectable during Baseline recovery. Reselecting the open project keeps its active storyboard, and copy prompts use the current owning project title. Covered by the Node suite and targeted Chrome regressions.
+
+- The project picker lists storyboards as keyboard-accessible rows with a checkmark on the active storyboard. Both Chrome picker scenarios passed after the change.
+
+- Existing canvas data and history stay on the Baseline. The project switcher creates a named copy from the open storyboard and remembers the selected target across reloads.
+- Copies carry source provenance and start independent content and layout revisions. The service stages complete copies before publishing. Damaged copies keep their identity for recovery and reserve their names.
+- Scene, vision, repository, and Mesh Foundry prompts carry exact target IDs and CLI reads. Mesh Foundry resolves images from the selected storyboard's manifest and asset directory. Live Kairo and Scene Rehearsal work is deferred.
+- Independent review and verification covered legacy state, atomic failure, copy isolation, recovery, keyboard navigation, selection persistence, and the real clipboard-to-CLI handoff with fictional data. Build, lint, formatting, 18 Node tests, and 5 Chrome scenarios passed. Inspected the storyboard picker at 1440 × 960 and 390 × 650.
+
 ## Project switcher refinement — 2026-11-11
 
 - The header switcher opens with title search, a bounded scrolling project list, and an active-project indicator. The starter prompt stays in the footer, alongside the Project actions control for repository prompts and Mesh Foundry handoff.

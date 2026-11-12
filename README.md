@@ -2,7 +2,9 @@
 
 A local, agent-maintained storyboard studio for software projects. Discuss ideas in your preferred agent harness; agents populate and revise a storyboard canvas that you explore visually.
 
-The first usable version is implemented: one canvas per software project, text and image cards with animated details, branches and loops, persisted arrangement, targeted prompt copying, live updates, and an agent CLI with validated batches and local recovery.
+The first usable version is implemented: one canvas per storyboard, text and image cards with animated details, branches and loops, persisted arrangement, targeted prompt copying, live updates, and an agent CLI with validated batches and local recovery.
+
+Use the project switcher’s **Storyboards** list to choose the Baseline or a named storyboard. Enter a name and select **Create copy** to start from the open storyboard with independent scenes, layout, and revision history. Copied prompts carry the exact storyboard target and scene.
 
 ## Run locally
 

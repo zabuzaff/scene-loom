@@ -131,11 +131,58 @@ a {
   color: var(--muted);
   flex: none;
 }
-.header-canvas-label {
-  color: var(--muted);
-  font-size: 11px;
-  padding-left: 20px;
-  border-left: 1px solid var(--line);
+.project-trigger-label {
+  display: grid;
+  text-align: left;
+}
+.project-trigger-label small {
+  color: var(--soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.storyboard-controls {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+}
+.storyboard-label {
+  padding-inline: 10px;
+  color: var(--soft);
+  font-size: 12px;
+}
+.storyboard-list {
+  max-height: min(144px, 22dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.storyboard-list button {
+  overflow-wrap: anywhere;
+}
+.storyboard-list button:focus-visible {
+  outline-offset: -2px;
+}
+.storyboard-controls form {
+  padding-inline: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.storyboard-controls input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px;
+}
+.storyboard-controls form button {
+  width: auto;
+  white-space: nowrap;
 }
 .header-right {
   margin-left: auto;
@@ -922,9 +969,6 @@ kbd {
     padding: 0 20px;
     gap: 18px;
   }
-  .header-canvas-label {
-    display: none;
-  }
   .canvas-caption {
     left: 22px;
   }
@@ -1108,4 +1152,13 @@ kbd {
 .scene-asset-action button:hover {
   background: var(--surface-hover);
   color: var(--text);
+}
+
+@media (max-width: 480px) {
+  .studio-header .wordmark > span {
+    display: none;
+  }
+  .studio-header .project-trigger {
+    gap: 10px;
+  }
 }

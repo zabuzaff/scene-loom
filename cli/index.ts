@@ -5,7 +5,7 @@ import { schemas, Id } from '../shared/schema.js';
 
 const args = process.argv.slice(2);
 const print = (v: unknown) => console.log(JSON.stringify(v, null, 2));
-const help = `Scene Loom — agent interface\nAll results are JSON. Inputs are JSON files or - for stdin.\n\n  schema [batch|project|layout|createProject|importAsset|restore|viewport]\n  project list\n  project create INPUT\n  project read PROJECT_ID\n  project apply PROJECT_ID INPUT [--dry-run]\n  asset import PROJECT_ID INPUT\n  scene read PROJECT_ID SCENE_ID\n  layout patch PROJECT_ID INPUT\n  backup list PROJECT_ID\n  backup restore PROJECT_ID INPUT\n\nStart the service with npm run dev (or npm run build && npm start).\nSet SCENE_LOOM_DATA_DIR for an alternate absolute local data root.\nAsset import INPUT: {"path":"/absolute/path/image.png"}\nRead docs/agent-interface.md before mutations.`;
+const help = `Scene Loom — agent interface\nAll results are JSON. Inputs are JSON files or - for stdin.\n\n  schema [batch|project|layout|createProject|createStoryboard|importAsset|restore|viewport]\n  project list\n  project create INPUT\n  project read PROJECT_ID\n  storyboard create SOURCE_TARGET_ID INPUT\n  project apply PROJECT_ID INPUT [--dry-run]\n  asset import PROJECT_ID INPUT\n  scene read PROJECT_ID SCENE_ID\n  layout patch PROJECT_ID INPUT\n  backup list PROJECT_ID\n  backup restore PROJECT_ID INPUT\n\nStart the service with npm run dev (or npm run build && npm start).\nSet SCENE_LOOM_DATA_DIR for an alternate absolute local data root.\nAsset import INPUT: {"path":"/absolute/path/image.png"}\nRead docs/agent-interface.md before mutations.`;
 async function input(path?: string) {
   if (!path) throw new Error('Provide a JSON file path or - for stdin.');
   if (path === '-') {
@@ -32,6 +32,7 @@ async function main() {
     'project list',
     'project create',
     'project read',
+    'storyboard create',
     'project apply',
     'asset import',
     'scene read',
@@ -52,6 +53,11 @@ async function main() {
       break;
     case 'project read':
       route += `/${id}`;
+      break;
+    case 'storyboard create':
+      route += `/${id}/storyboards`;
+      method = 'POST';
+      body = await input(path);
       break;
     case 'project apply':
       route += `/${id}/apply${args.includes('--dry-run') ? '?dryRun=true' : ''}`;

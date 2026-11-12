@@ -72,6 +72,19 @@ export const ProjectVision = z.strictObject({
   }),
 });
 export type ProjectVisionData = z.infer<typeof ProjectVision>;
+const StoryboardName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .regex(/^[^\p{Cc}]+$/u);
+export const CreateStoryboard = z.strictObject({ name: StoryboardName });
+export const Storyboard = z.strictObject({
+  projectId: Id,
+  name: StoryboardName,
+  sourceId: Id,
+  sourceContentRevision: z.number().int().nonnegative(),
+});
 export const Project = z.strictObject({
   schemaVersion: z.literal(1),
   id: Id,
@@ -79,6 +92,7 @@ export const Project = z.strictObject({
   contentRevision: z.number().int().nonnegative(),
   layoutRevision: z.number().int().nonnegative(),
   updatedAt: z.string(),
+  storyboard: Storyboard.optional(),
   vision: ProjectVision.optional(),
   meshFoundryEnabled: z.boolean().optional(),
   scenes: z.array(Scene),
@@ -169,10 +183,17 @@ export const schemas = {
   batch: () => z.toJSONSchema(Batch),
   project: () => z.toJSONSchema(Project),
   layout: () => z.toJSONSchema(LayoutPatch),
+  createStoryboard: () => z.toJSONSchema(CreateStoryboard),
   createProject: () => z.toJSONSchema(CreateProject),
   importAsset: () => z.toJSONSchema(ImportAsset),
   restore: () => z.toJSONSchema(Restore),
   viewport: () => z.toJSONSchema(Viewport),
+};
+
+export type StoryboardSummary = {
+  id: string;
+  name: string;
+  status: 'ready' | 'unreadable';
 };
 
 export type ProjectSummary =
@@ -182,5 +203,12 @@ export type ProjectSummary =
       status: 'ready';
       sceneCount: number;
       updatedAt: string;
+      storyboards?: StoryboardSummary[];
     }
-  | { id: string; title: string; status: 'unreadable'; error: ApiError };
+  | {
+      id: string;
+      title: string;
+      status: 'unreadable';
+      error: ApiError;
+      storyboards?: StoryboardSummary[];
+    };

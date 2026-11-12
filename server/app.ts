@@ -116,6 +116,11 @@ export async function createApp(options: {
   app.get('/api/projects/:id', async (req) =>
     ok(await store.read((req.params as { id: string }).id)),
   );
+  app.post('/api/projects/:id/storyboards', async (req) =>
+    ok(
+      await store.createStoryboard((req.params as { id: string }).id, req.body),
+    ),
+  );
   app.get('/api/projects/:id/scenes/:sceneId', async (req) => {
     const { id, sceneId } = req.params as { id: string; sceneId: string };
     const p = await store.read(id);

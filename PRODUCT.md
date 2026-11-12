@@ -6,13 +6,13 @@ A personal local studio for seeing, understanding, and evolving software storybo
 
 ## Agreed workflow
 
-1. Open a software project: it has one zoomable canvas for the entire project.
+1. Open a software project. Each storyboard has its own zoomable canvas. Use the project switcher to choose the Baseline or a named storyboard.
 2. In your preferred agent harness, discuss ideas and request complete scene material, including images.
 3. The agent imports images and submits structured scene and connection updates.
 4. Scene Loom displays the successful update automatically without manual importing or reloading.
 5. Pan, zoom, fit the canvas, drag cards, and open scene details. Positions persist.
 6. Copy a card's Continue from here or Edit this scene prompt, paste into your agent, and optionally add direction.
-7. The agent reads current state and revises the existing scene or adds connected scenes. Revisions replace the current idea; no visible alternate-version workflow.
+7. The agent reads current state and revises the existing scene or adds connected scenes. Revisions update the selected storyboard. To explore a revamp separately, create a named copy of the current storyboard first.
 
 ## Content and interaction
 
@@ -22,7 +22,7 @@ A personal local studio for seeing, understanding, and evolving software storybo
 - Card details contain a description and notes; meaningful titles remain visible on the canvas.
 - Arrows support branches, joins, loops, and optional short labels.
 - Users can drag cards or choose Arrange scenes to organize connected flows. Agents preserve the saved arrangement unless explicitly asked to reorganize it.
-- Copy buttons carry stable project/scene references and instructions to read current content, not stale copies of all notes. Nothing is automatically sent to a chat.
+- Copy buttons carry stable project, storyboard, and scene references and instructions to read current content, not stale copies of all notes. Nothing is automatically sent to a chat.
 
 ## Approved design and tools
 
@@ -34,7 +34,7 @@ Search/focus a scene, fit all, subtle recent-update feedback, and local recovery
 
 ## Exclusions
 
-Built-in chat or image generation, game engine integration, 3D asset studio, multiplayer, cloud accounts/sync, hosting, mobile-first interface, nested boards, alternate idea comparison, manual scene-content authoring UI, general drawing/whiteboard tools, background global rearrangement, and media timelines.
+Built-in chat or image generation, game engine integration, 3D asset studio, multiplayer, cloud accounts/sync, hosting, mobile-first interface, nested boards, simultaneous comparison views, manual scene-content authoring UI, general drawing/whiteboard tools, background global rearrangement, and media timelines.
 
 ## Project Vision enhancement
 

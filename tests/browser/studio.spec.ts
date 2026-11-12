@@ -320,7 +320,9 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await page
       .getByRole('button', { name: `${standaloneTitle} 0 scenes` })
       .click();
-    await expect(picker).toHaveText(standaloneTitle);
+    await expect(picker.locator('.project-trigger-label > span')).toHaveText(
+      standaloneTitle,
+    );
     await openProjectActions();
     await expect(
       page.getByRole('button', { name: 'Copy start development prompt' }),
@@ -397,6 +399,14 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     ).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(
+      page.getByRole('button', { name: 'Baseline', exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
+      page.getByRole('textbox', { name: 'New storyboard name' }),
+    ).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
       page.getByRole('button', { name: 'Copy new project starter prompt' }),
     ).toBeFocused();
     await page.keyboard.press('Tab');
@@ -430,12 +440,16 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     await picker.click();
     await search.fill(standaloneTitle);
     await search.press('Enter');
-    await expect(picker).toHaveText(standaloneTitle);
+    await expect(picker.locator('.project-trigger-label > span')).toHaveText(
+      standaloneTitle,
+    );
     await expect(picker).toHaveAttribute('aria-expanded', 'false');
     await picker.click();
     await search.fill(title);
     await search.press('Enter');
-    await expect(picker).toHaveText(title);
+    await expect(picker.locator('.project-trigger-label > span')).toHaveText(
+      title,
+    );
     await page.unroute('**/api/projects');
     await page.setViewportSize(viewport);
     await page.reload();
@@ -1383,5 +1397,205 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
       recursive: true,
       force: true,
     });
+  }
+});
+
+test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene', async ({
+  page,
+}) => {
+  const root = '/private/tmp/scene-loom-browser-tests';
+  const id = `storyboards_${randomUUID()}`;
+  const title = 'Fictional Research Studio';
+  const temp = await mkdtemp(join(tmpdir(), 'scene-loom-storyboard-ui-'));
+  const cli = (args: string[], input?: unknown) =>
+    JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          'cli/index.ts',
+          ...args,
+          ...(input === undefined ? [] : ['-']),
+        ],
+        {
+          encoding: 'utf8',
+          input: input === undefined ? undefined : JSON.stringify(input),
+          env: { ...process.env, SCENE_LOOM_DATA_DIR: root },
+        },
+      ),
+    ).data;
+  let copyId: string | undefined;
+  try {
+    cli(['project', 'create'], { id, title });
+    const image = join(temp, 'fictional-lobby.png');
+    await sharp({
+      create: { width: 480, height: 320, channels: 3, background: '#39546b' },
+    })
+      .png()
+      .toFile(image);
+    const asset = cli(['asset', 'import', id], { path: image });
+    const batch = {
+      schemaVersion: 1,
+      projectId: id,
+      expectedContentRevision: 0,
+      requestId: 'lobby',
+      operations: [
+        {
+          type: 'scene.create',
+          scene: {
+            id: 'lobby',
+            title: 'Existing lobby',
+            description: 'A fictional office.',
+            notes: '',
+            mainAssetId: asset.id,
+            supportingAssetIds: [],
+          },
+        },
+      ],
+    };
+    cli(['project', 'apply', id], batch);
+    const runtime = JSON.parse(
+      await readFile(join(root, 'runtime.json'), 'utf8'),
+    );
+    const response = await fetch(`${runtime.url}/api/projects/${id}/settings`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${runtime.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ meshFoundryEnabled: true }),
+    });
+    expect(response.ok).toBe(true);
+    const baseline = cli(['project', 'read', id]);
+    await page.addInitScript((projectId) => {
+      if (!localStorage.getItem('scene-loom-project'))
+        localStorage.setItem('scene-loom-project', projectId);
+    }, id);
+    await page.goto('/');
+    const trigger = page.locator('.project-trigger');
+    await expect(trigger).toContainText('Baseline');
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    const name = page.getByRole('textbox', { name: 'New storyboard name' });
+    await name.fill('3D Research Office');
+    await expect(page.locator('#project-switcher')).toHaveCSS('opacity', '1');
+    await page.screenshot({
+      path: 'test-results/storyboard-picker-desktop.png',
+    });
+    await name.press('Enter');
+    await expect(trigger).toContainText('3D Research Office');
+    copyId = cli(['project', 'list']).find(
+      (project: { id: string }) => project.id === id,
+    ).storyboards[0].id as string;
+    cli(['project', 'apply', copyId], {
+      ...batch,
+      projectId: copyId,
+      operations: [
+        {
+          type: 'scene.patch',
+          id: 'lobby',
+          changes: { title: 'Proposed lobby' },
+        },
+      ],
+    });
+    const copyPrompt = page.getByRole('button', {
+      name: 'Copy asset-generation prompt for Proposed lobby',
+    });
+    await copyPrompt.click();
+    const handoff = await page.evaluate(() => navigator.clipboard.readText());
+    expect(handoff).toContain(`Source project: ${title} (${id})`);
+    expect(handoff).toContain(
+      `Storyboard: 3D Research Office (project ID ${id}, storyboard target ID ${copyId})`,
+    );
+    expect(handoff).toContain(`projects/${copyId}/`);
+    const command = handoff.match(
+      /^Read scene: (.+) scene read ([\w-]+) ([\w-]+)$/m,
+    );
+    expect(command?.[1]).toBe(handoff.match(/^CLI: (.+)$/m)?.[1]);
+    expect(command?.slice(2)).toEqual([copyId, 'lobby']);
+    const resolved = cli(['scene', 'read', command![2], command![3]]);
+    expect(resolved.scene.title).toBe('Proposed lobby');
+    expect(resolved.scene.mainAssetId).toBe(asset.id);
+    await page.reload();
+    await expect(copyPrompt).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 650 });
+    await trigger.click();
+    const storyboards = page.getByRole('group', { name: 'Storyboards' });
+    await expect(
+      storyboards.getByRole('button', { name: '3D Research Office' }),
+    ).toHaveAttribute('aria-current', 'true');
+    await expect(page.locator('#project-switcher')).toHaveCSS('opacity', '1');
+    await page.screenshot({
+      path: 'test-results/storyboard-picker-narrow.png',
+    });
+    const bounds = await storyboards.boundingBox();
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+    const baselineRow = storyboards.getByRole('button', { name: 'Baseline' });
+    await baselineRow.focus();
+    await baselineRow.press('Enter');
+    await expect(trigger).toBeFocused();
+    await expect(trigger).toContainText('Baseline');
+    await expect(
+      page.getByRole('article', { name: 'Existing lobby' }),
+    ).toBeVisible();
+    expect(cli(['project', 'read', id])).toEqual(baseline);
+    await trigger.click();
+    await storyboards
+      .getByRole('button', { name: '3D Research Office' })
+      .click();
+    await expect(copyPrompt).toBeVisible();
+    await trigger.click();
+    await page.getByRole('button', { name: `${title} 1 scenes` }).click();
+    await expect(copyPrompt).toBeVisible();
+    await trigger.click();
+    const projectSearch = page.getByRole('textbox', {
+      name: 'Search projects',
+    });
+    await projectSearch.fill(title);
+    await projectSearch.press('Enter');
+    await expect(copyPrompt).toBeVisible();
+    const renamed = 'Renamed Research Studio';
+    cli(['project', 'apply', id], {
+      ...batch,
+      requestId: 'rename_baseline',
+      expectedContentRevision: baseline.contentRevision,
+      operations: [
+        {
+          type: 'project.vision.set',
+          vision: { ...visionFixture, name: renamed },
+        },
+      ],
+    });
+    await expect(trigger).toContainText(renamed);
+    expect(cli(['project', 'read', copyId]).title).toBe(renamed);
+    await copyPrompt.click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+      `Source project: ${renamed} (${id})`,
+    );
+
+    await writeFile(join(root, 'projects', id, 'project.json'), 'damaged');
+    await page.reload();
+    await expect(copyPrompt).toBeVisible();
+    await expect(
+      page.getByText('Healthy storyboard copies remain available.', {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await trigger.click();
+    await expect(
+      storyboards.getByRole('button', { name: 'Baseline Needs recovery' }),
+    ).toBeDisabled();
+    await expect(
+      storyboards.getByRole('button', { name: '3D Research Office' }),
+    ).toHaveAttribute('aria-current', 'true');
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+    for (const target of [id, copyId])
+      if (target)
+        await rm(join(root, 'projects', target), {
+          recursive: true,
+          force: true,
+        });
   }
 });

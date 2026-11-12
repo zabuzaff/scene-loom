@@ -10,7 +10,7 @@
 ## Architecture and invariants
 
 - React/TypeScript/Vite client, React Flow custom scene nodes, Motion transitions; Fastify local service; Zod shared schemas; sharp image ingestion; CLI communicates with the same service as the UI.
-- Keep Scene Loom independent of software repositories. One software project has one canvas, with no board hierarchy. Users browse, reposition cards, and copy prompts; agents supply content and connections.
+- Keep Scene Loom independent of software repositories. A software project can have a Baseline and named storyboard copies. Each storyboard has one canvas, with no board hierarchy. Users browse, reposition cards, and copy prompts; agents supply content and connections.
 - Support text-only scenes. Validate all attached images as imported, decoded assets. Validate whole durable models and complete graphs before atomic publication. Reject invalid batches without partial content changes.
 - Content and layout revisions are separate. Agent edits preserve user positions by default. Never use full-project replacement from the UI or CLI.
 - Personal data defaults to ~/Library/Application Support/Scene Loom. Tests must use an absolute temporary SCENE_LOOM_DATA_DIR. Do not commit data, assets, backups, runtime.json, service.lock, credentials, dist/, or test artifacts.

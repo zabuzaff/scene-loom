@@ -1,4 +1,7 @@
 import {
+  copyFile,
+  mkdtemp,
+  rm,
   mkdir,
   readFile,
   writeFile,
@@ -12,11 +15,15 @@ import { randomUUID, createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import sharp, { type Metadata } from 'sharp';
 import { z } from 'zod';
+import { BaselineName } from '../shared/storyboard.js';
 import {
   Id,
   Project,
   Batch,
   CreateProject,
+  CreateStoryboard,
+  Storyboard,
+  type StoryboardSummary,
   LayoutPatch,
   ProjectSettings,
   Restore,
@@ -128,53 +135,184 @@ export class Store extends EventEmitter {
   }
   async read(id: string): Promise<ProjectData> {
     const { receipts: _receipts, ...project } = await this.load(id);
+    if (project.storyboard) {
+      try {
+        project.title = (await this.load(project.storyboard.projectId)).title;
+      } catch (error) {
+        if (
+          !(
+            error instanceof StudioError &&
+            ['NOT_FOUND', 'CORRUPT_PROJECT'].includes(error.code)
+          ) &&
+          (error as NodeJS.ErrnoException).code !== 'EACCES'
+        )
+          throw error;
+      }
+    }
     return project;
   }
   async list(): Promise<ProjectSummary[]> {
     const dir = join(this.root, 'projects');
     await mkdir(dir, { recursive: true });
     const entries = await readdir(dir, { withFileTypes: true });
-    return Promise.all(
+    const entriesWithState = await Promise.all(
       entries
         .filter((e) => e.isDirectory() && Id.safeParse(e.name).success)
-        .map(async (e): Promise<ProjectSummary> => {
-          try {
-            const p = await this.read(e.name);
-            return {
-              id: p.id,
-              title: p.title,
-              status: 'ready',
-              sceneCount: p.scenes.length,
-              updatedAt: p.updatedAt,
-            };
-          } catch (error) {
-            const known =
-              error instanceof StudioError &&
-              ['CORRUPT_PROJECT', 'NOT_FOUND'].includes(error.code);
-            if (!known && (error as NodeJS.ErrnoException).code !== 'EACCES')
-              throw error;
-            const issue =
-              error instanceof StudioError
-                ? error
-                : new StudioError(
-                    'PROJECT_UNREADABLE',
-                    `Project ${e.name} cannot be read.`,
-                    500,
-                    'Check project folder permissions before retrying.',
-                  );
-            return {
-              id: e.name,
-              title: e.name,
-              status: 'unreadable',
-              error: {
-                code: issue.code,
-                message: issue.message,
-                suggestion: issue.suggestion,
-              },
-            };
-          }
-        }),
+        .map(
+          async (
+            e,
+          ): Promise<{
+            summary: ProjectSummary;
+            storyboard?: ProjectData['storyboard'];
+          }> => {
+            try {
+              const p = await this.load(e.name);
+              return {
+                storyboard: p.storyboard,
+                summary: {
+                  id: p.id,
+                  title: p.title,
+                  status: 'ready',
+                  sceneCount: p.scenes.length,
+                  updatedAt: p.updatedAt,
+                },
+              };
+            } catch (error) {
+              const known =
+                error instanceof StudioError &&
+                ['CORRUPT_PROJECT', 'NOT_FOUND'].includes(error.code);
+              if (!known && (error as NodeJS.ErrnoException).code !== 'EACCES')
+                throw error;
+              const issue =
+                error instanceof StudioError
+                  ? error
+                  : new StudioError(
+                      'PROJECT_UNREADABLE',
+                      `Project ${e.name} cannot be read.`,
+                      500,
+                      'Check project folder permissions before retrying.',
+                    );
+              // The immutable identity survives damage to the mutable canvas.
+              const identity = await readFile(
+                join(this.folder(e.name), 'storyboard.json'),
+                'utf8',
+              )
+                .then((raw) => Storyboard.parse(JSON.parse(raw)))
+                .catch(() => undefined);
+              return {
+                storyboard: identity,
+                summary: {
+                  id: e.name,
+                  title: e.name,
+                  status: 'unreadable',
+                  error: {
+                    code: issue.code,
+                    message: issue.message,
+                    suggestion: issue.suggestion,
+                  },
+                },
+              };
+            }
+          },
+        ),
     );
+    const storyboards = new Map<string, StoryboardSummary[]>();
+    for (const { summary, storyboard } of entriesWithState) {
+      if (!storyboard) continue;
+      const siblings = storyboards.get(storyboard.projectId) ?? [];
+      siblings.push({
+        id: summary.id,
+        name: storyboard.name,
+        status: summary.status,
+      });
+      storyboards.set(storyboard.projectId, siblings);
+    }
+    return entriesWithState.flatMap(({ summary, storyboard }) => {
+      if (storyboard) return [];
+      const children = storyboards.get(summary.id);
+      if (children) {
+        summary.storyboards = children.sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+      }
+      return [summary];
+    });
+  }
+  async createStoryboard(sourceId: string, input: unknown) {
+    return this.serial(async () => {
+      const { name } = CreateStoryboard.parse(input);
+      const source = await this.load(sourceId);
+      const projectId = source.storyboard?.projectId ?? sourceId;
+      const project = (await this.list()).find((item) => item.id === projectId);
+      if (project?.status !== 'ready')
+        fail(
+          'NOT_FOUND',
+          'Recover the baseline before copying a storyboard.',
+          404,
+        );
+      const names = [
+        BaselineName,
+        ...(project.storyboards ?? []).map((item) => item.name),
+      ];
+      if (
+        names.some((existing) => existing.toLowerCase() === name.toLowerCase())
+      )
+        fail('ALREADY_EXISTS', 'A storyboard already uses this name.', 409);
+      const id = `storyboard_${randomUUID()}`;
+      const fork: State = {
+        ...source,
+        id,
+        title: project.title,
+        storyboard: {
+          projectId,
+          name,
+          sourceId,
+          sourceContentRevision: source.contentRevision,
+        },
+        contentRevision: 0,
+        layoutRevision: 0,
+        receipts: [],
+        updatedAt: new Date().toISOString(),
+      };
+      const staging = await mkdtemp(
+        join(this.root, 'projects', '.storyboard-'),
+      );
+      try {
+        await mkdir(join(staging, 'assets'));
+        await mkdir(join(staging, 'thumbnails'));
+        for (const [assetId, asset] of Object.entries(fork.assets)) {
+          if (
+            asset.id !== assetId ||
+            asset.path !== `assets/${assetId}.webp` ||
+            asset.thumbnailPath !== `thumbnails/${assetId}.webp`
+          ) {
+            fail(
+              'INVALID_ASSET',
+              'Restore the source storyboard asset manifest before copying.',
+              409,
+            );
+          }
+          for (const path of [
+            asset.path,
+            asset.thumbnailPath,
+            `assets/${asset.id}.source`,
+          ]) {
+            await copyFile(
+              join(this.folder(sourceId), path),
+              join(staging, path),
+            );
+          }
+        }
+        await this.validate(fork, staging);
+        await atomicWrite(join(staging, 'storyboard.json'), fork.storyboard);
+        await atomicWrite(join(staging, 'project.json'), fork);
+        await rename(staging, this.folder(id));
+      } finally {
+        await rm(staging, { recursive: true, force: true });
+      }
+      this.emit('change', { projectId, kind: 'projects' });
+      return this.read(id);
+    });
   }
   async create(input: unknown) {
     return this.serial(async () => {
@@ -294,7 +432,7 @@ export class Store extends EventEmitter {
       return asset;
     });
   }
-  private async validate(p: State) {
+  private async validate(p: State, folder = this.folder(p.id)) {
     StoredState.parse(p);
     const scenes = new Set(p.scenes.map((s) => s.id));
     if (
@@ -319,7 +457,7 @@ export class Store extends EventEmitter {
             'Import the image, then use the returned asset ID.',
             scene.id,
           );
-        await stat(join(this.folder(p.id), asset.path)).catch(() =>
+        await stat(join(folder, asset.path)).catch(() =>
           fail(
             'MISSING_ASSET',
             `Stored image ${id} is missing.`,
@@ -380,7 +518,7 @@ export class Store extends EventEmitter {
       for (const [index, op] of batch.operations.entries()) {
         if (op.type === 'project.vision.set') {
           next.vision = op.vision;
-          next.title = op.vision.name;
+          if (!next.storyboard) next.title = op.vision.name;
           continue;
         }
         const sceneOp = op.type.startsWith('scene.');

@@ -608,3 +608,110 @@ test('vision batches preserve old models, publish atomically, replay, survive re
   });
   assert.equal((await store.read('test')).vision, undefined);
 });
+
+test('named storyboards copy a legacy project and keep revisions, assets, recovery and changes isolated', async (t) => {
+  const { root, store, scene, batch, asset } = await fixture(t);
+  const baseBatch = batch([{ type: 'scene.create', scene: scene('lobby') }]);
+  const baseResult = await store.apply(baseBatch);
+  await store.layout('test', {
+    expectedLayoutRevision: 0,
+    positions: { lobby: { x: 120, y: 60 } },
+  });
+  const baseline = await store.read('test');
+  const history = await store.backups('test');
+  assert.equal(baseline.storyboard, undefined);
+  await assert.rejects(
+    store.createStoryboard('test', { name: 'baseline' }),
+    hasCode('ALREADY_EXISTS'),
+  );
+  const fork = await store.createStoryboard('test', {
+    name: 'Research Office',
+  });
+  assert.deepEqual(fork.storyboard, {
+    projectId: 'test',
+    name: 'Research Office',
+    sourceId: 'test',
+    sourceContentRevision: baseResult.contentRevision,
+  });
+  assert.deepEqual(fork.positions, baseline.positions);
+  assert.deepEqual(fork.scenes, baseline.scenes);
+  assert.equal(fork.layoutRevision, 0);
+  assert.deepEqual(await store.backups(fork.id), []);
+  assert.deepEqual(
+    await readFile(await store.assetFile(fork.id, asset.id, false)),
+    await readFile(await store.assetFile('test', asset.id, false)),
+  );
+  await store.apply({
+    ...baseBatch,
+    projectId: fork.id,
+    operations: [
+      { type: 'scene.patch', id: 'lobby', changes: { title: 'New lobby' } },
+    ],
+  });
+  await store.layout(fork.id, {
+    expectedLayoutRevision: 0,
+    positions: { lobby: { x: 0, y: 0 } },
+  });
+  await store.viewport(fork.id, { x: 25, y: 10, zoom: 1 });
+  const restarted = new Store(root);
+  assert.deepEqual(await restarted.read('test'), baseline);
+  assert.deepEqual(await restarted.backups('test'), history);
+  assert.deepEqual(await restarted.apply(baseBatch), baseResult);
+  assert.equal(await restarted.viewport('test'), null);
+  assert.deepEqual(await restarted.viewport(fork.id), {
+    x: 25,
+    y: 10,
+    zoom: 1,
+  });
+  assert.equal((await restarted.read(fork.id)).scenes[0].title, 'New lobby');
+  assert.deepEqual((await restarted.read(fork.id)).positions.lobby, {
+    x: 0,
+    y: 0,
+  });
+  const second = await restarted.createStoryboard(fork.id, {
+    name: 'Second proposal',
+  });
+  assert.equal(second.storyboard?.projectId, 'test');
+  assert.equal(second.storyboard?.sourceId, fork.id);
+  assert.equal(second.scenes[0].title, 'New lobby');
+  const backup = (await restarted.backups(fork.id))[0];
+  await writeFile(join(root, 'projects', fork.id, 'project.json'), 'damaged');
+  const [project] = await restarted.list();
+  assert.equal(project.status, 'ready');
+  assert.deepEqual(project.storyboards, [
+    { id: fork.id, name: 'Research Office', status: 'unreadable' },
+    { id: second.id, name: 'Second proposal', status: 'ready' },
+  ]);
+  await assert.rejects(
+    restarted.createStoryboard('test', { name: 'research office' }),
+    hasCode('ALREADY_EXISTS'),
+  );
+  await restarted.restore(fork.id, { backupId: backup, recoverCorrupt: true });
+  assert.deepEqual((await restarted.read(fork.id)).storyboard, fork.storyboard);
+  assert.deepEqual(await restarted.read('test'), baseline);
+  await writeFile(join(root, 'projects', 'test', 'project.json'), 'damaged');
+  const [damagedBaseline] = await restarted.list();
+  assert.equal(damagedBaseline.status, 'unreadable');
+  assert.deepEqual(damagedBaseline.storyboards, [
+    { id: fork.id, name: 'Research Office', status: 'ready' },
+    { id: second.id, name: 'Second proposal', status: 'ready' },
+  ]);
+  assert.equal((await restarted.read(second.id)).scenes[0].title, 'New lobby');
+});
+
+test('a copy with damaged asset paths leaves the source and published library untouched', async (t) => {
+  const { root, store, asset } = await fixture(t);
+  const path = join(root, 'projects', 'test', 'project.json');
+  const data = JSON.parse(await readFile(path, 'utf8'));
+  data.assets[asset.id].path = '../test/project.json';
+  const damaged = JSON.stringify(data);
+  await writeFile(path, damaged);
+  const before = await store.list();
+  await assert.rejects(
+    store.createStoryboard('test', { name: 'Research Office' }),
+    hasCode('INVALID_ASSET'),
+  );
+  assert.equal(await readFile(path, 'utf8'), damaged);
+  assert.deepEqual(await store.list(), before);
+  assert.deepEqual(await readdir(join(root, 'projects')), ['test']);
+});
