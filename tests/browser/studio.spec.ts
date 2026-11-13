@@ -1295,6 +1295,9 @@ test('project vision onboarding, safe prompt targets, live refinement and respon
     expect(prompt).toContain('Cover the full agreed scope');
     expect(prompt).toContain('default to a text-only planning scene');
     expect(prompt).toContain('CREATIVE VISUALIZATION OPTIONS');
+    expect(prompt).toContain(
+      'Show each as a single frame that might appear on screen in the finished experience.',
+    );
     expect(prompt).toContain('in the same atomic batch');
     expect(prompt).not.toContain(id);
     const { data: visualization } = cliInput(['asset', 'import', id], {

@@ -1,5 +1,9 @@
 # Progress and continuation
 
+## Project Vision visualization prompt — 2026-11-13
+
+- The starter asks for distinct frames of the finished experience in use for games and projects with core 3D work. The agent chooses the viewpoint, art direction, and moment.
+
 ## Named storyboards — 2026-11-12
 
 - Healthy copies remain selectable during Baseline recovery. Reselecting the open project keeps its active storyboard, and copy prompts use the current owning project title. Covered by the Node suite and targeted Chrome regressions.
