@@ -227,3 +227,14 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Generation uses the Mesh Foundry scoped pin contract. Scene Loom checks the live toggle for suggestion and result mutations, supports repeat result writes, and copies drafts without copying result pins to a new storyboard target.
 - The starter drafts the full agreed text storyboard and requests a saved visualization for games and projects with core 3D work. Development plans and reviews carry both stable IDs.
 - Follow-up review added draft retirement, ordered result writeback using the Mesh Foundry library version, and publication checks for every linked scene. Retired drafts retain their recorded results and disappear from the active handoff.
+
+## Scene rehearsal prep — 2026-11-15
+
+- Enabled storyboards now offer a rehearsal prep prompt on every scene card. The agent reviews the full Foundry library and proposes spatial layout, asset selection, clip needs, and scenario cues.
+- The scene patch contract saves a reviewable draft brief on the exact scene. Expanded cards display the draft. Foundry animation requests and rehearsal publishing are follow-on work.
+- The prep prompt handles unresolved Foundry libraries explicitly. Saved briefs now show a review notice after storyboard content changes or when their source revision is unknown.
+- Saved briefs offer **Copy rehearsal review prompt** for an independent production review in a fresh agent session.
+- The saved brief adds **Copy rehearsal handoff prompt**. It uses the independent review to stage a new blockout or continue an existing rehearsal with the verified scope.
+
+- 2026-11-16: Added the scene-scoped rehearsal event contract, visible next actions, and fixture coverage from draft review through model acceptance, fit corrections, and stale evidence. External Kairo integration remains a separate test.
+- Follow-up review added adoption of an existing Foundry revision, fresh review and fit after replacement, and status text for unresolved failures from earlier rehearsal revisions.

@@ -1140,6 +1140,10 @@ kbd {
   }
 }
 
+.scene-rehearsal-brief {
+  overflow-wrap: anywhere;
+}
+
 .scene-asset-action {
   border-top: 1px solid var(--line);
 }
@@ -1167,4 +1171,49 @@ kbd {
   .studio-header .project-trigger {
     gap: 10px;
   }
+}
+
+.scene-rehearsal-actions {
+  padding: 8px 12px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.scene-rehearsal-actions p {
+  margin: 3px 0;
+  color: var(--soft);
+}
+.scene-rehearsal-actions button {
+  margin-top: 6px;
+  padding: 7px 8px;
+  background: var(--surface-hover);
+  border-radius: 6px;
+  color: var(--accent);
+}
+.scene-rehearsal-actions label {
+  display: grid;
+  gap: 3px;
+}
+.scene-rehearsal-actions select {
+  width: 100%;
+  color: var(--text);
+  background: var(--surface-hover);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  font: inherit;
+}
+
+.scene-rehearsal-actions {
+  border-bottom: 1px solid var(--line);
+}
+.scene-rehearsal-actions button.rehearsal-secondary {
+  background: transparent;
+  color: var(--soft);
+}
+.scene-rehearsal-actions button.rehearsal-secondary:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.scene-rehearsal-brief summary {
+  cursor: pointer;
 }

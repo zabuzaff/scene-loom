@@ -1403,6 +1403,7 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
 }) => {
   const root = '/private/tmp/scene-loom-browser-tests';
   const id = `storyboards_${randomUUID()}`;
+  test.setTimeout(90_000);
   const title = 'Fictional Research Studio';
   const temp = await mkdtemp(join(tmpdir(), 'scene-loom-storyboard-ui-'));
   const cli = (args: string[], input?: unknown) =>
@@ -1556,9 +1557,362 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
     const resolved = cli(['scene', 'read', command![2], command![3]]);
     expect(resolved.scene.title).toBe('Proposed lobby');
     expect(resolved.scene.mainAssetId).toBeNull();
+    const prep = page.getByRole('button', {
+      name: 'Copy rehearsal prep prompt for Proposed lobby',
+    });
+    await prep.click();
+    const prepPrompt = await page.evaluate(() =>
+      navigator.clipboard.readText(),
+    );
+    expect(prepPrompt).toContain(`storyboard target ID ${copyId}`);
+    expect(prepPrompt).toContain('partition');
+    expect(prepPrompt).toContain('library: null');
+    expect(prepPrompt).toContain('changes.rehearsalBrief');
+    const brief = {
+      basis: { storyboardId: copyId, contentRevision: 2 },
+      layout: 'Use a low partition to keep the entrance visible.',
+      scenarios: ['A visitor enters and reads the directory.'],
+      assets: [
+        {
+          name: 'Lobby sign',
+          decision: 'use',
+          rationale: 'It orients arriving visitors.',
+          behavior: 'Remain static beside the entrance.',
+        },
+      ],
+      gaps: ['Confirm wheelchair clearance.'],
+    };
+    cli(['project', 'apply', copyId], {
+      ...batch,
+      projectId: copyId,
+      expectedContentRevision: 2,
+      requestId: 'draft-rehearsal',
+      operations: [
+        {
+          type: 'scene.patch',
+          id: 'lobby',
+          changes: { rehearsalBrief: brief },
+        },
+      ],
+    });
+    const lobby = page.getByRole('article', { name: 'Proposed lobby' });
+    await lobby.getByRole('button', { name: 'Open Proposed lobby' }).click();
+    await expect(lobby.getByText(brief.layout)).toBeVisible();
+    const review = lobby.getByRole('button', {
+      name: 'Copy rehearsal review prompt for Proposed lobby',
+    });
+    await review.click();
+    const reviewPrompt = await page.evaluate(() =>
+      navigator.clipboard.readText(),
+    );
+    expect(reviewPrompt).toContain(`storyboard target ID ${copyId}`);
+    expect(reviewPrompt).toContain('scene read ' + copyId + ' lobby');
+    expect(reviewPrompt).toContain('Ready for blockout or Needs revision');
+    expect(reviewPrompt).toContain('owner-confirmed library mapping');
+    expect(reviewPrompt).toContain('Ready for model import or Blocked');
+    expect(reviewPrompt).toContain('rehearsal.record');
+    const actions = lobby.getByRole('region', {
+      name: 'Rehearsal next action',
+    });
+    const copyAction = async (name: string) => {
+      await actions.getByRole('button', { name, exact: true }).click();
+      return page.evaluate(() => navigator.clipboard.readText());
+    };
+    const target = copyId;
+    const read = () => cli(['project', 'read', target]);
+    const record = (event: Record<string, unknown>) => {
+      const project = read();
+      const scene = project.scenes.find(
+        (entry: { id: string }) => entry.id === 'lobby',
+      );
+      return cli(['project', 'apply', target], {
+        schemaVersion: 1,
+        projectId: target,
+        expectedContentRevision: project.contentRevision,
+        requestId: `event_${randomUUID()}`,
+        operations: [
+          {
+            type: 'rehearsal.record',
+            id: 'lobby',
+            afterEventId: scene.rehearsalEvents?.at(-1)?.eventId ?? null,
+            event,
+          },
+        ],
+      });
+    };
+    await expect(actions.getByRole('button', { name: /handoff/ })).toHaveCount(
+      0,
+    );
+    record({
+      kind: 'review',
+      eventId: 'blocked',
+      inputRevision: 3,
+      blockout: 'needs-revision',
+      imports: 'blocked',
+      scope: 'Lobby circulation',
+      findings: ['Move the proxy away from the entrance.'],
+    });
+    expect(
+      await copyAction('Copy rehearsal brief correction for Proposed lobby'),
+    ).toContain('latest review findings');
+    cli(['project', 'apply', target], {
+      ...batch,
+      projectId: target,
+      expectedContentRevision: 4,
+      requestId: 'correct-brief',
+      operations: [
+        {
+          type: 'scene.patch',
+          id: 'lobby',
+          changes: {
+            rehearsalBrief: {
+              ...brief,
+              basis: { storyboardId: target, contentRevision: 4 },
+            },
+          },
+        },
+      ],
+    });
+    await expect(actions).toContainText('Review outdated');
+    await copyAction('Copy rehearsal review prompt for Proposed lobby');
+    record({
+      kind: 'review',
+      eventId: 'approved_scope',
+      inputRevision: 5,
+      blockout: 'ready',
+      imports: 'blocked',
+      scope: 'Proxy blockout',
+      findings: ['Test wheelchair clearance before imports.'],
+    });
+    const rehearsalHandoff = await copyAction(
+      'Copy rehearsal handoff prompt for Proposed lobby',
+    );
+    expect(rehearsalHandoff).toContain(`scene read ${target} lobby`);
+    expect(rehearsalHandoff).toContain('latest independent review');
+    expect(rehearsalHandoff).toContain('dedicated empty library');
+    expect(rehearsalHandoff).toContain('preserve intervening edits');
+    expect(rehearsalHandoff).toContain('record a draft event');
+    const draft = (revisionId: string) => ({
+      dataDir: '/private/tmp/fixture-lobby-rehearsal',
+      port: 4332,
+      revisionId,
+      link: `fixture:${revisionId}`,
+    });
+    const model = (revisionId: string) => ({
+      libraryId: 'lobby_foundry',
+      assetId: 'sign',
+      revisionId,
+    });
+    const requirement = {
+      id: 'sign_fit',
+      name: 'Directory sign',
+      source: model('original'),
+      objects: ['proxy_sign'],
+      measurements: [{ label: 'Maximum width', value: 1.2, unit: 'm' }],
+      changes: ['Narrow the housing.'],
+      preserve: ['Keep the lettering.'],
+      checks: ['Verify wheelchair clearance.'],
+    };
+    record({
+      kind: 'draft',
+      eventId: 'blockout_saved',
+      reviewId: 'approved_scope',
+      parentRevisionId: null,
+      draft: draft('blockout'),
+      requirements: [requirement],
+    });
+    const foundry = await copyAction(
+      'Copy Foundry revision request for Directory sign',
+    );
+    expect(foundry).toContain(JSON.stringify(model('original')));
+    expect(foundry).toContain('sign_fit');
+    expect(foundry).toContain('Record a candidate event');
+    const publish = (revisionId: string, parent: string) =>
+      record({
+        kind: 'candidate',
+        eventId: revisionId,
+        requirementId: 'sign_fit',
+        model: model(revisionId),
+        basedOn: model(parent),
+      });
+    const accept = (revisionId: string) =>
+      record({
+        kind: 'candidate-review',
+        eventId: `accept_${revisionId}`,
+        requirementId: 'sign_fit',
+        model: model(revisionId),
+        verdict: 'accepted',
+        evidence: ['Owner acceptance confirmed in fixture.'],
+      });
+    publish('candidate1', 'original');
+    expect(
+      await copyAction(
+        'Copy Foundry candidate review prompt for Directory sign',
+      ),
+    ).toContain('candidate1');
+    accept('candidate1');
+    const fitPrompt = await copyAction(
+      'Copy rehearsal fit-check prompt for Directory sign',
+    );
+    for (const value of [
+      'candidate1',
+      'blockout',
+      'proxy_sign',
+      'Record a fit event',
+    ])
+      expect(fitPrompt).toContain(value);
+    const fit = (
+      eventId: string,
+      revisionId: string,
+      rehearsalRevisionId: string,
+      verdict: string,
+      assembled?: string,
+    ) =>
+      record({
+        kind: 'fit',
+        eventId,
+        requirementId: 'sign_fit',
+        model: model(revisionId),
+        rehearsalRevisionId,
+        ...(assembled ? { assembled: draft(assembled) } : {}),
+        verdict,
+        evidence: ['Measured route and checked playback.'],
+      });
+    fit('failed_model', 'candidate1', 'blockout', 'model-defect', 'assembly1');
+    await expect(actions).toContainText('Model defect');
+    expect(
+      await copyAction('Copy Foundry revision request for Directory sign'),
+    ).toContain('candidate1');
+    await page.screenshot({ path: 'test-results/rehearsal-model-defect.png' });
+    publish('candidate2', 'candidate1');
+    accept('candidate2');
+    const beforeStale = read();
+    expect(() => fit('stale_model', 'candidate1', 'assembly1', 'pass')).toThrow(
+      expect.objectContaining({
+        stdout: expect.stringContaining('STALE_REHEARSAL'),
+      }),
+    );
+    expect(read()).toEqual(beforeStale);
+    fit(
+      'failed_camera',
+      'candidate2',
+      'assembly1',
+      'rehearsal-issue',
+      'assembly2',
+    );
+    expect(
+      await copyAction('Copy rehearsal correction request for Directory sign'),
+    ).toContain('failed_camera');
+    fit('passed', 'candidate2', 'assembly2', 'pass', 'assembly3');
+    await expect(actions).toContainText('In-scene fit: Verified');
+    record({
+      kind: 'draft',
+      eventId: 'updated_blockout',
+      reviewId: 'approved_scope',
+      parentRevisionId: 'assembly3',
+      draft: draft('assembly4'),
+      requirements: [],
+    });
+    await expect(actions).toContainText('Outdated · Repeat fit check');
+    expect(
+      await copyAction('Copy rehearsal fit-check prompt for Directory sign'),
+    ).toContain('assembly4');
+    const beforeOldHead = read();
+    expect(() => fit('stale_head', 'candidate2', 'assembly3', 'pass')).toThrow(
+      expect.objectContaining({
+        stdout: expect.stringContaining('STALE_REHEARSAL'),
+      }),
+    );
+    expect(read()).toEqual(beforeOldHead);
+    await expect(lobby.getByText(brief.assets[0].behavior)).toBeVisible();
+    await expect(lobby.getByText(brief.gaps[0])).toBeVisible();
+    await page.screenshot({ path: 'test-results/rehearsal-brief.png' });
+    const saved = cli(['scene', 'read', target, 'lobby']).scene;
+    expect(saved.rehearsalBrief.layout).toEqual(brief.layout);
+    expect(saved.rehearsalEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventId: 'failed_model',
+          rehearsalRevisionId: 'blockout',
+        }),
+        expect.objectContaining({
+          eventId: 'passed',
+          rehearsalRevisionId: 'assembly2',
+        }),
+      ]),
+    );
+    const fork = cli(['storyboard', 'create', target], {
+      name: 'No inherited verification',
+    });
+    expect(
+      cli(['scene', 'read', fork.id, 'lobby']).scene.rehearsalEvents,
+    ).toBeUndefined();
     await page.reload();
     await expect(copyPrompt).toBeVisible();
     await page.setViewportSize({ width: 390, height: 650 });
+    await page.getByRole('button', { name: 'Fit all scenes' }).click();
+    const narrowFit = actions.getByRole('button', {
+      name: 'Copy rehearsal fit-check prompt for Directory sign',
+    });
+    await expect(narrowFit).toBeInViewport();
+    await narrowFit.focus();
+    await expect(narrowFit).toBeFocused();
+    await narrowFit.press('Enter');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+      'assembly4',
+    );
+    await page.screenshot({ path: 'test-results/rehearsal-action-narrow.png' });
+    const recoveryPrompt = await page.evaluate(() =>
+      navigator.clipboard.readText(),
+    );
+    expect(recoveryPrompt).toContain('superseded that acceptance');
+    expect(recoveryPrompt).toContain('adoptExisting: true');
+    record({
+      kind: 'candidate',
+      eventId: 'adopt_candidate3',
+      requirementId: 'sign_fit',
+      model: model('candidate3'),
+      basedOn: model('candidate2'),
+      adoptExisting: true,
+    });
+    await expect(actions).toContainText('Candidate awaiting review');
+    await expect(actions).toContainText('In-scene fit: Untested');
+    accept('candidate3');
+    fit('failed_adopted_model', 'candidate3', 'assembly4', 'model-defect');
+    record({
+      kind: 'draft',
+      eventId: 'later_head',
+      reviewId: 'approved_scope',
+      parentRevisionId: 'assembly4',
+      draft: draft('assembly5'),
+      requirements: [],
+    });
+    await expect(actions).toContainText(
+      'Earlier rehearsal · Model correction needed',
+    );
+    await expect(
+      actions.getByRole('button', { name: /Copy Foundry revision request/ }),
+    ).toBeVisible();
+    record({
+      kind: 'draft',
+      eventId: 'requirements_remeasured',
+      reviewId: 'approved_scope',
+      parentRevisionId: 'assembly5',
+      draft: draft('assembly6'),
+      requirements: [
+        { ...requirement, id: 'sign_remeasured', source: model('candidate3') },
+      ],
+    });
+    record({
+      kind: 'candidate',
+      eventId: 'reuse_candidate3',
+      requirementId: 'sign_remeasured',
+      model: model('candidate3'),
+      basedOn: model('candidate3'),
+      adoptExisting: true,
+    });
+    await expect(actions).toContainText('Candidate awaiting review');
+    await expect(actions).toContainText('In-scene fit: Untested');
     await trigger.click();
     const storyboards = page.getByRole('group', { name: 'Storyboards' });
     await expect(

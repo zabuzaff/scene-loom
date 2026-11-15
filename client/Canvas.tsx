@@ -1,3 +1,8 @@
+import {
+  assetNextAction,
+  rehearsalState,
+  sceneNextAction,
+} from '../shared/rehearsal';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
@@ -29,6 +34,11 @@ import {
   RequestError,
   scenePrompt,
   assetGenerationPrompt,
+  rehearsalPrepPrompt,
+  rehearsalReviewPrompt,
+  rehearsalHandoffPrompt,
+  rehearsalAssetPrompt,
+  type AssetPromptAction,
   type AgentInfo,
 } from './api';
 import { SceneCard, type SceneNode } from './SceneCard';
@@ -135,28 +145,90 @@ function CanvasInner({
     [],
   );
   const copy = useCallback(
-    async (id: string, action: 'continue' | 'edit' | 'assets') => {
+    async (
+      id: string,
+      action:
+        | 'continue'
+        | 'edit'
+        | 'assets'
+        | 'rehearsal'
+        | 'rehearsal-review'
+        | 'rehearsal-handoff'
+        | AssetPromptAction,
+      requirementId?: string,
+    ) => {
       const p = latest.current,
         s = p.scenes.find((s) => s.id === id);
+      if (!s) return;
+      const state = rehearsalState(s.rehearsalEvents);
+      const next = sceneNextAction(
+        !!s.rehearsalBrief,
+        p.rehearsalInputRevision ?? p.contentRevision,
+        state,
+      );
+      const asset = state.assets.find(
+        ({ requirement }) => requirement.id === requirementId,
+      );
+      if (action.startsWith('rehearsal') || requirementId) {
+        if (!p.meshFoundryEnabled) return;
+        if (requirementId) {
+          if (
+            next ||
+            !state.head ||
+            !asset ||
+            (action !== 'adopt-candidate' && assetNextAction(asset) !== action)
+          )
+            return;
+        } else if (
+          next !== action &&
+          !(action === 'rehearsal-handoff' && !next)
+        )
+          return;
+      }
       if (
-        !s ||
-        (action === 'assets' &&
-          (!p.meshFoundryEnabled ||
-            !p.assetSuggestions?.some(
-              (suggestion) =>
-                !suggestion.retired && suggestion.sceneIds.includes(id),
-            )))
+        action === 'assets' &&
+        (!p.meshFoundryEnabled ||
+          !p.assetSuggestions?.some(
+            (suggestion) =>
+              !suggestion.retired && suggestion.sceneIds.includes(id),
+          ))
       )
         return;
       try {
         await navigator.clipboard.writeText(
           action === 'assets'
             ? assetGenerationPrompt(info, p, s)
-            : scenePrompt(info, p, s, action),
+            : action === 'rehearsal'
+              ? rehearsalPrepPrompt(info, p, s)
+              : action === 'rehearsal-review'
+                ? rehearsalReviewPrompt(info, p, s)
+                : action === 'rehearsal-handoff'
+                  ? rehearsalHandoffPrompt(info, p, s)
+                  : action === 'continue' || action === 'edit'
+                    ? scenePrompt(info, p, s, action)
+                    : rehearsalAssetPrompt(
+                        info,
+                        p,
+                        s,
+                        asset!,
+                        state.head!,
+                        action,
+                      ),
         );
-        notify(
-          `${action === 'assets' ? 'Asset-generation' : action === 'continue' ? 'Continue' : 'Edit'} prompt copied. Paste it into your agent.`,
-        );
+        const labels = {
+          'rehearsal-handoff': 'Rehearsal handoff',
+          'rehearsal-review': 'Rehearsal review',
+          rehearsal: 'Rehearsal prep',
+          assets: 'Asset-generation',
+          continue: 'Continue',
+          edit: 'Edit',
+          foundry: 'Foundry revision request',
+          fit: 'Rehearsal fit-check',
+          'candidate-review': 'Foundry candidate review',
+          'adopt-candidate': 'Existing Foundry candidate',
+          'rehearsal-correction': 'Rehearsal correction',
+        };
+        notify(`${labels[action]} prompt copied. Paste it into your agent.`);
       } catch {
         notify('Clipboard unavailable. Allow clipboard access and try again.');
       }
@@ -189,6 +261,9 @@ function CanvasInner({
               recent: recent.includes(scene.id),
               toggle,
               copy,
+              rehearsalEnabled: !!project.meshFoundryEnabled,
+              rehearsalInputRevision:
+                project.rehearsalInputRevision ?? project.contentRevision,
               assetSuggestions: project.meshFoundryEnabled
                 ? project.assetSuggestions?.filter(
                     (suggestion) =>

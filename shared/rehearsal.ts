@@ -1,0 +1,265 @@
+import { z } from 'zod';
+
+const key = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/);
+const note = z.string().trim().min(1).max(8000);
+const notes = z.array(note).min(1).max(100);
+const revision = z.number().int().nonnegative();
+export const Model = z.strictObject({
+  libraryId: key,
+  assetId: key,
+  revisionId: key,
+});
+const Draft = z.strictObject({
+  dataDir: note.regex(/^\//),
+  port: z.number().int().min(1).max(65535),
+  revisionId: key,
+  link: note,
+});
+const Requirement = z.strictObject({
+  id: key,
+  name: note,
+  source: Model,
+  objects: z.array(key).min(1).max(100),
+  measurements: z
+    .array(
+      z.strictObject({ label: note, value: z.number().finite(), unit: note }),
+    )
+    .min(1)
+    .max(100),
+  changes: notes,
+  preserve: notes,
+  checks: notes,
+});
+const event = z.strictObject({ eventId: key });
+export const RehearsalEvent = z.discriminatedUnion('kind', [
+  event.extend({
+    kind: z.literal('review'),
+    inputRevision: revision,
+    blockout: z.enum(['ready', 'needs-revision']),
+    imports: z.enum(['ready', 'blocked', 'not-needed']),
+    scope: note,
+    findings: notes,
+  }),
+  event.extend({
+    kind: z.literal('draft'),
+    reviewId: key,
+    parentRevisionId: key.nullable(),
+    draft: Draft,
+    requirements: z.array(Requirement).max(100),
+    retireRequirementIds: z.array(key).max(100).optional(),
+  }),
+  event.extend({
+    kind: z.literal('candidate'),
+    requirementId: key,
+    model: Model,
+    basedOn: Model,
+    adoptExisting: z.literal(true).optional(),
+  }),
+  event.extend({
+    kind: z.literal('candidate-review'),
+    requirementId: key,
+    model: Model,
+    verdict: z.enum(['accepted', 'needs-revision']),
+    evidence: notes,
+  }),
+  event.extend({
+    kind: z.literal('fit'),
+    requirementId: key,
+    model: Model,
+    rehearsalRevisionId: key,
+    assembled: Draft.optional(),
+    verdict: z.enum(['pass', 'model-defect', 'rehearsal-issue']),
+    evidence: notes,
+  }),
+]);
+export type RehearsalEvent = z.infer<typeof RehearsalEvent>;
+type Event<K> = Extract<RehearsalEvent, { kind: K }>;
+type Requirement = z.infer<typeof Requirement>;
+type Model = z.infer<typeof Model>;
+export type Handoff = {
+  requirement: Requirement;
+  measuredIn: Event<'draft'>['draft'];
+  candidate?: Event<'candidate'>;
+  acceptance?: Event<'candidate-review'>;
+  fit?: Event<'fit'>;
+};
+
+export function rehearsalState(events: RehearsalEvent[] = []) {
+  let review: Event<'review'> | undefined;
+  let draft: Event<'draft'> | undefined;
+  let head: Event<'draft'>['draft'] | undefined;
+  const assets: Handoff[] = [];
+  for (const item of events) {
+    if (item.kind === 'review') review = item;
+    else if (item.kind === 'draft') {
+      draft = item;
+      head = item.draft;
+      for (const id of item.retireRequirementIds ?? []) {
+        const index = assets.findIndex(
+          ({ requirement }) => requirement.id === id,
+        );
+        if (index !== -1) assets.splice(index, 1);
+      }
+      for (const requirement of item.requirements) {
+        const index = assets.findIndex(
+          (asset) =>
+            asset.requirement.source.libraryId ===
+              requirement.source.libraryId &&
+            asset.requirement.source.assetId === requirement.source.assetId,
+        );
+        const entry = { requirement, measuredIn: item.draft };
+        if (index === -1) assets.push(entry);
+        else assets[index] = entry;
+      }
+    } else {
+      const asset = assets.find(
+        (asset) => asset.requirement.id === item.requirementId,
+      );
+      if (!asset) continue;
+      if (item.kind === 'candidate') {
+        asset.candidate = item;
+        asset.acceptance = undefined;
+        asset.fit = undefined;
+      } else if (item.kind === 'candidate-review') {
+        asset.acceptance = item;
+        asset.fit = undefined;
+      } else {
+        asset.fit = item;
+        head = item.assembled ?? head;
+      }
+    }
+  }
+  return { review, draft, head, assets };
+}
+export function sameModel(a: Model | undefined, b: Model) {
+  return (
+    a?.libraryId === b.libraryId &&
+    a.assetId === b.assetId &&
+    a.revisionId === b.revisionId
+  );
+}
+
+export function fitIsCurrent(asset: Handoff, head?: { revisionId: string }) {
+  return (
+    !!asset.fit &&
+    !!head &&
+    (asset.fit.assembled?.revisionId ?? asset.fit.rehearsalRevisionId) ===
+      head.revisionId
+  );
+}
+
+export function workflowError(
+  events: RehearsalEvent[],
+  item: RehearsalEvent,
+  inputRevision: number,
+  hasBrief: boolean,
+) {
+  const { review, draft, head, assets } = rehearsalState(events);
+  if (!hasBrief || events.some((event) => event.eventId === item.eventId))
+    return 'A saved brief and unused event ID are required.';
+  if (item.kind === 'review')
+    return item.inputRevision === inputRevision
+      ? undefined
+      : 'The review inputs changed.';
+  if (review?.inputRevision !== inputRevision || review.blockout !== 'ready')
+    return 'A current review must clear blockout.';
+  if (item.kind === 'draft') {
+    const priorIds = new Set(
+      events.flatMap((event) =>
+        event.kind === 'draft' ? event.requirements.map(({ id }) => id) : [],
+      ),
+    );
+    const sourceKeys = item.requirements.map(({ source }) =>
+      JSON.stringify([source.libraryId, source.assetId]),
+    );
+    if (
+      item.reviewId !== review.eventId ||
+      item.parentRevisionId !== (head?.revisionId ?? null) ||
+      (head && head.dataDir !== item.draft.dataDir) ||
+      item.retireRequirementIds?.some(
+        (id) => !assets.some(({ requirement }) => requirement.id === id),
+      ) ||
+      (!(
+        head?.revisionId === item.draft.revisionId &&
+        draft?.reviewId !== review.eventId
+      ) &&
+        events.some(
+          (event) =>
+            (event.kind === 'draft' &&
+              event.draft.revisionId === item.draft.revisionId) ||
+            (event.kind === 'fit' &&
+              event.assembled?.revisionId === item.draft.revisionId),
+        )) ||
+      new Set(sourceKeys).size !== sourceKeys.length ||
+      item.requirements.some(({ id }) => priorIds.has(id) || !priorIds.add(id))
+    )
+      return 'The draft must match the recorded head and current review, and use fresh requirement IDs and active retirement targets.';
+    return;
+  }
+  if (draft?.reviewId !== review.eventId || !head)
+    return 'Record a rehearsal under the current review first.';
+  const asset = assets.find(
+    ({ requirement }) => requirement.id === item.requirementId,
+  );
+  if (!asset) return 'The asset requirement was replaced or does not exist.';
+  if (item.kind === 'candidate') {
+    const source = asset.candidate?.model ?? asset.requirement.source;
+    if (
+      !sameModel(source, item.basedOn) ||
+      sameModel(asset.candidate?.model, item.model) ||
+      (!item.adoptExisting &&
+        sameModel(asset.requirement.source, item.model)) ||
+      item.model.libraryId !== source.libraryId ||
+      item.model.assetId !== source.assetId ||
+      events.some(
+        (event) =>
+          event.kind === 'candidate' &&
+          (event.requirementId === item.requirementId || !item.adoptExisting) &&
+          sameModel(event.model, item.model),
+      )
+    )
+      return 'The candidate must use the current Foundry base and a revision not yet reviewed for this requirement. Mark adoption of an existing model explicitly.';
+  } else if (!sameModel(asset.candidate?.model, item.model))
+    return 'The Foundry candidate changed.';
+  else if (item.kind === 'candidate-review') {
+    if (asset.acceptance)
+      return 'This candidate already has a review. Publish a new revision to resolve a rejection.';
+  } else if (
+    asset.acceptance?.verdict !== 'accepted' ||
+    item.rehearsalRevisionId !== head.revisionId ||
+    (item.assembled &&
+      (item.assembled.dataDir !== head.dataDir ||
+        events.some(
+          (event) =>
+            (event.kind === 'draft' &&
+              event.draft.revisionId === item.assembled?.revisionId) ||
+            (event.kind === 'fit' &&
+              event.assembled?.revisionId === item.assembled?.revisionId),
+        )))
+  )
+    return 'Fit evidence must target the accepted model and current rehearsal; any assembly must be a new revision in the same library.';
+}
+
+export function assetNextAction(asset: Handoff) {
+  if (
+    !asset.candidate ||
+    asset.acceptance?.verdict === 'needs-revision' ||
+    asset.fit?.verdict === 'model-defect'
+  )
+    return 'foundry';
+  if (!asset.acceptance) return 'candidate-review';
+  if (asset.fit?.verdict === 'rehearsal-issue') return 'rehearsal-correction';
+  return 'fit';
+}
+
+export function sceneNextAction(
+  hasBrief: boolean,
+  inputRevision: number,
+  state: ReturnType<typeof rehearsalState>,
+) {
+  if (!hasBrief) return 'rehearsal';
+  if (state.review?.inputRevision !== inputRevision) return 'rehearsal-review';
+  if (state.review.blockout === 'needs-revision') return 'rehearsal';
+  if (state.draft?.reviewId !== state.review.eventId)
+    return 'rehearsal-handoff';
+}

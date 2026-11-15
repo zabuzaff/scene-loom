@@ -49,3 +49,9 @@ When Mesh Foundry is enabled, Project Vision offers an asset suggestion prompt. 
 ## Repository workflows
 
 The project menu copies separate prompts to plan development, review the plan in a fresh agent session, and build from the reviewed plan. The agent researches and chooses the stack during planning. Planning Markdown lives in the software repository. The resync prompt updates the storyboard from verified repository behavior. Resync preserves planned scenes and distinguishes them from implemented behavior. The external agent resolves the target repository from the workspace or creator direction.
+
+## Rehearsal prep
+
+With Mesh Foundry handoff enabled, a scene card can copy a rehearsal prep prompt and display the saved draft brief. The agent reviews the scene's use cases against the full project library and proposes a layout, asset selection, behaviors, and gaps. The layout can include new rooms, partitions, and openings when the scene warrants them.
+
+The rehearsal action stays outside the scrollable brief. A saved brief leads to independent review, then a cleared review leads to staging. Measured Foundry follow-ups lead to candidate review and an in-scene fit check. The card shows which record needs attention; prior findings stay available in the expanded scene. Copied prompts resolve the saved records directly.

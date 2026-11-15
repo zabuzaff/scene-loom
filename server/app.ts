@@ -126,7 +126,12 @@ export async function createApp(options: {
     const p = await store.read(id);
     const s = p.scenes.find((s) => s.id === sceneId);
     if (!s) fail('NOT_FOUND', 'Scene does not exist.', 404);
-    return ok({ projectId: id, contentRevision: p.contentRevision, scene: s });
+    return ok({
+      projectId: id,
+      contentRevision: p.contentRevision,
+      rehearsalInputRevision: p.rehearsalInputRevision ?? p.contentRevision,
+      scene: s,
+    });
   });
   app.post('/api/projects/:id/assets', async (req) => {
     // Local file import is a trusted CLI capability, never a browser capability.

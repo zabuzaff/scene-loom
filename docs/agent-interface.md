@@ -217,3 +217,112 @@ The project menu copies two prompts that use the active Scene Loom project's sta
 **Copy start development prompt** requires a Ready verdict and matching paths and SHA-256 fingerprints for the current Markdown, then implement the reviewed scope. A missing plan, missing review, or unresolved material finding stops the run before coding. The agent documents routine technical adjustments and sends material changes back through planning and review. It builds through the normal startup path, verifies the effective local datastore before writing data, and provides startup and sign-in instructions. Frontend work uses the planned accessible component library, shared layouts, and route transitions where applicable. The agent verifies the primary flow in a running browser, including relevant viewports and keyboard use, and reports observed results or blockers. The three development actions are available once the board has scenes.
 
 **Copy resync with repository prompt** asks the agent to inspect the code and update the storyboard with verified behavior. Planned scenes remain visible. Resync reviews hierarchical title prefixes across the board, preserving numbers that still fit and using labeled connections for cross-branch relationships. Resync writes or updates a Repository verification block in the notes of each verified scene, even when the scene already matches. It records the repository revision, relevant working-tree changes, evidence, verified scope, and main image asset ID when present. Development uses current verification or explicit creator direction to identify baseline scenes. A representative screenshot fills an empty main image or replaces an outdated or speculative one. The batch publishes the new image reference and verification notes together. When capture is unavailable, resync preserves the existing image state and marks outdated or speculative imagery as unverified. The agent submits evidence-backed patches through the CLI with a dry run and the content revision it actually reviewed. If that revision advances, the agent rereads the storyboard and recomputes the affected changes before retrying. Resync is also available on an empty board so it can document an existing implementation.
+
+## Draft rehearsal brief
+
+With **Mesh Foundry handoff** enabled, any scene card can copy a rehearsal prep prompt. The prompt reviews the exact scene, the project vision, and the full Foundry library. It proposes a layout and checks which assets and animations the use cases require. It can propose spatial changes such as a partition or a separate room.
+
+Save the draft via `scene.patch` with `changes.rehearsalBrief`. The fields are `layout`, `scenarios`, `assets`, and `gaps`. Each asset has `name`, `decision` (`use`, `optional`, `leave out`, or `missing`), `rationale`, and `behavior`. An optional `source` records `libraryId`, `assetId`, and `revisionId` for the inspected model. Use `schema batch` for the full contract. Omitting the field preserves the draft, and setting it to null clears it. A saved brief is review material. Its asset references are proposals and carry no external approval.
+
+A named storyboard copy inherits its scenes' draft briefs as planning content. Recheck the layout and source revisions against the copied storyboard before reusing them.
+
+Include `basis: { storyboardId, contentRevision }` using the target and revision read before writing. Submit the brief in its own batch. A draft with no basis, a different target, or a later storyboard content revision is marked for re-review. Layout-only changes do not affect this notice. If the Foundry lookup has no linked library, verify an owner-identified legacy library or ask for the intended library before saving asset decisions.
+
+## Reviewed rehearsal and asset fit
+
+Each handoff is scoped to the exact **storyboard target ID and scene ID**. Start with `project read STORYBOARD_ID` and `scene read STORYBOARD_ID SCENE_ID`. Read the scene's `rehearsalBrief` and ordered `rehearsalEvents`; an absent log is empty. Never use a similarly named scene or another storyboard's state. A storyboard copy inherits its brief, but starts with no rehearsal, review, or fit evidence.
+
+Use `schema batch` for the event shapes. Submit workflow-only `rehearsal.record` operations with `id` (scene ID), `afterEventId` (last event observed, or null), and `event` (including a unique `eventId`). Use the enclosing batch's exact `projectId`, current `expectedContentRevision`, and unique `requestId`. Dry-run and apply through the CLI. The service validates events in order and publishes atomically. On conflict, reread both systems and repeat affected inspections; never relabel old evidence with new IDs or advance the predecessor just to make a stale write pass.
+
+| Event              | Writeback and prerequisites                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `review`           | Independent review of the saved brief and current inputs. Use the observed `rehearsalInputRevision` (fall back to `contentRevision` when absent), separate blockout and model import verdicts, scope, and prioritized findings with corrections. A blocked blockout returns to prep.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `draft`            | Exact current cleared review event ID; prior recorded head revision or null; canonical absolute Rehearsal `dataDir`, resolved loopback `port`, published revision digest and link. Include measured asset requirements here. Each needs a fresh requirement ID, name, exact Foundry library/asset/source revision, scene proxy or object IDs, numeric measurements with units, requested changes, preservation list, and playback checks. The draft revision identifies the measurement basis. A new requirement for the same Foundry library and asset supersedes the older requirement; omitted requirements remain active unless named in `retireRequirementIds`. |
+| `candidate`        | Active requirement ID, `basedOn` tuple for its source or latest candidate, and the exact Foundry model tuple. Use `adoptExisting: true` when adopting an already published model. A new candidate clears the current acceptance and fit, with prior evidence retained.                                                                                                                                                                                                                                                                                                                                                                                               |
+| `candidate-review` | Exact active candidate tuple and requirement ID with evidence. Use `accepted` only after verifying Foundry's owner acceptance of that exact eligible model revision and its match to the requirements. Leave pending owner acceptance unrecorded; use `needs-revision` for a reviewed model that needs corrections.                                                                                                                                                                                                                                                                                                                                                  |
+| `fit`              | Exact accepted model tuple, requirement ID, and current rehearsal revision. If this run publishes an assembled child, include its exact library, revision and link in `assembled`; evidence then covers that child, and this write advances the saved head. Otherwise evidence covers the supplied head. Record observed playback and measurements as `pass`, `model-defect`, or `rehearsal-issue`.                                                                                                                                                                                                                                                                  |
+
+Storyboard content edits and recovery invalidate independent review; workflow writes and canvas layout changes do not. After a new review, record the advanced rehearsal or revalidate and re-record its existing head under that review before recording asset results. A new rehearsal head makes older fit evidence outdated, even for an unchanged model. Keep the history; recheck the current assembled rehearsal. Model defects route to Foundry at the exact defective model revision. Placement, camera, and playback problems route to Rehearsal. A fit pass never confers model acceptance, and Foundry acceptance never establishes in-scene fit.
+
+Scene Loom owns the scene brief, fit requirements and handoff status. Foundry owns source and candidate publication, model eligibility and owner acceptance. Resolve Foundry through its supported Scene Loom lookup or an owner-confirmed library mapping; then read the exact library, asset and revision through its supported service or CLI. Scene Rehearsal owns draft playback, revision publication and measured fit evidence. Resolve it via the saved library and head, or verify a dedicated empty library for the initial publication; verify the exact scene provenance and parent under Rehearsal's contract. Use each app's supported writes and revision checks. Scene Loom checks its recorded identities and predecessors; it does not poll either external library. Check the external heads and exact model eligibility immediately before publishing and before recording evidence. If an external write succeeded but Scene Loom writeback failed, reconcile from the actual published revision and its parent rather than publishing another revision blindly.
+
+Scene Rehearsal has one head per canonical datastore and no native Scene Loom ID in its manifest. Set `SCENE_REHEARSAL_DATA_DIR` and `SCENE_REHEARSAL_PORT` from the saved reference, confirm with `npm start -- --status`, and use `npm run cli -- list` and `read DIGEST` to verify its head and ancestry. The initial scene association is recorded in Loom; use a dedicated empty datastore unless the owner confirms an unambiguous existing mapping. Rehearsal `publish FILE` takes `{request, parent, scene, links}`, where `parent` is its actual head; Loom's `parentRevisionId` is the previously recorded head. For model binding, export the exact private Foundry bundle and use Rehearsal's `import-model REQUEST` with the expected project, asset, revision, hash and ordered clips. Use the returned `sourceKey` in the assembly. Verify live model-stage eligibility before fit; a later owner acceptance can supersede an earlier revision. If a correction is outside the Rehearsal authoring contract, save its reproduction as a rehearsal issue and leave fit unverified.
+
+### Foundry lookup and writeback
+
+The copied request supplies the owning project ID, storyboard target ID, scene ID and requirement ID. Run these commands from the indicated checkouts with the data directories for the active services.
+
+```sh
+# Scene Loom
+npm --silent run cli -- project read STORYBOARD_ID
+npm --silent run cli -- scene read STORYBOARD_ID SCENE_ID
+npm --silent run cli -- schema batch
+
+# Mesh Foundry
+npm --silent run cli -- scene-loom SOURCE_PROJECT_ID STORYBOARD_ID
+```
+
+Use the Scene Loom reads to confirm the owning project and that `meshFoundryEnabled` is true. Find the requirement in the scene's `draft` events. Its enclosing `draft.revisionId` identifies the rehearsal that supplied the measurements. The requirement is active until a later draft retires its ID or replaces it with a fresh requirement for the same Foundry library and asset. Check that the latest independent review clears blockout, that its `inputRevision` matches the storyboard's rehearsal input revision, and that the latest draft references that review. Use the Foundry lookup to resolve the library. Verify the saved library, asset and revision through Foundry before editing. For a correction, start from the latest candidate for the active requirement and read the saved findings for that exact revision.
+
+Publish the candidate through Foundry first. In Scene Loom, record the published identity using this example batch. Substitute the actual target, scene, requirement, revision, predecessor and request IDs. `basedOn` is the saved source for the first candidate and the latest recorded candidate for a correction.
+
+```json
+{
+  "schemaVersion": 1,
+  "projectId": "storyboard_office",
+  "requestId": "record_sign_candidate_2",
+  "expectedContentRevision": 12,
+  "operations": [
+    {
+      "type": "rehearsal.record",
+      "id": "lobby",
+      "afterEventId": "sign_candidate_1_review",
+      "event": {
+        "kind": "candidate",
+        "eventId": "sign_candidate_2",
+        "requirementId": "sign_fit",
+        "basedOn": {
+          "libraryId": "office",
+          "assetId": "sign",
+          "revisionId": "model_1"
+        },
+        "model": {
+          "libraryId": "office",
+          "assetId": "sign",
+          "revisionId": "model_2"
+        }
+      }
+    }
+  ]
+}
+```
+
+```sh
+npm --silent run cli -- project apply STORYBOARD_ID /absolute/batch.json --dry-run
+npm --silent run cli -- project apply STORYBOARD_ID /absolute/batch.json
+```
+
+Record candidate review findings in a separate batch with the same operation envelope, a fresh request and event ID, and the observed revision and predecessor for that review. Use this event shape. Include observed measurements, the affected requirement, and the correction to make where applicable.
+
+```json
+{
+  "kind": "candidate-review",
+  "eventId": "sign_candidate_2_review",
+  "requirementId": "sign_fit",
+  "model": {
+    "libraryId": "office",
+    "assetId": "sign",
+    "revisionId": "model_2"
+  },
+  "verdict": "needs-revision",
+  "evidence": [
+    "The housing measures 1.28 m against the 1.20 m limit. Narrow the housing while preserving the lettering."
+  ]
+}
+```
+
+Use `accepted` only when the exact model meets the saved requirements and Foundry confirms current model-stage owner acceptance. If the candidate meets the requirements and owner acceptance is pending, wait to record acceptance until Foundry confirms it.
+
+Keep the observed predecessor and identities from the start of the work. Scene Loom returns `CONTENT_CONFLICT` if its content revision advanced and `STALE_REHEARSAL` if the scene predecessor or recorded workflow prerequisites no longer match. Even with a fresh envelope, it rejects results against a retired or replaced requirement, an outdated candidate base, or a review of a superseded model. Reread both apps and repeat the affected checks. If Foundry already published a candidate, verify its identity and provenance before retrying the Scene Loom writeback. Retry an identical batch with its original request ID when the response was lost.
+
+When Foundry supersedes a recorded acceptance, use the fit prompt's recovery instructions or copy the existing-model review prompt. To adopt a verified model already published in Foundry, record `candidate` with `adoptExisting: true`, the active requirement ID, the current `basedOn` tuple, and the exact existing `model` tuple. This can carry an earlier candidate into a replacement requirement, including when the revision is that requirement's source. The service rejects re-adopting a revision already recorded for the same requirement. Record fresh candidate review evidence, verify live owner acceptance, and run a fresh fit check. The earlier review and fit remain in the history.

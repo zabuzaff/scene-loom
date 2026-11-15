@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RehearsalEvent } from './rehearsal.js';
 
 export const Id = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/);
 const Text = z.string().max(50000);
@@ -11,6 +12,31 @@ export const Viewport = z.strictObject({
   y: z.number().finite(),
   zoom: z.number().min(0.1).max(2),
 });
+const BriefText = z.string().trim().min(1).max(4000);
+const RehearsalBrief = z.strictObject({
+  basis: z
+    .strictObject({
+      storyboardId: Id,
+      contentRevision: z.number().int().nonnegative(),
+    })
+    .optional(),
+  layout: BriefText,
+  scenarios: z.array(BriefText).min(1).max(30),
+  assets: z
+    .array(
+      z.strictObject({
+        name: z.string().trim().min(1).max(200),
+        decision: z.enum(['use', 'optional', 'leave out', 'missing']),
+        rationale: BriefText,
+        behavior: BriefText,
+        source: z
+          .strictObject({ libraryId: Id, assetId: Id, revisionId: Id })
+          .optional(),
+      }),
+    )
+    .max(100),
+  gaps: z.array(BriefText).max(50),
+});
 export const Scene = z.strictObject({
   id: Id,
   title: z.string().trim().min(1).max(200),
@@ -18,6 +44,8 @@ export const Scene = z.strictObject({
   notes: Text,
   mainAssetId: Id.nullable().optional(),
   supportingAssetIds: z.array(Id).max(30),
+  rehearsalBrief: RehearsalBrief.nullable().optional(),
+  rehearsalEvents: z.array(RehearsalEvent).optional(),
 });
 export const Connection = z.strictObject({
   id: Id,
@@ -111,6 +139,7 @@ export const Project = z.strictObject({
   id: Id,
   title: z.string().trim().min(1).max(200),
   contentRevision: z.number().int().nonnegative(),
+  rehearsalInputRevision: z.number().int().nonnegative().optional(),
   layoutRevision: z.number().int().nonnegative(),
   updatedAt: z.string(),
   storyboard: Storyboard.optional(),
@@ -122,7 +151,7 @@ export const Project = z.strictObject({
   assets: z.record(Id, Asset),
   positions: z.record(Id, Point),
 });
-const ScenePatch = Scene.omit({ id: true })
+const ScenePatch = Scene.omit({ id: true, rehearsalEvents: true })
   .partial()
   .refine(
     (v) => Object.keys(v).length > 0,
@@ -135,6 +164,12 @@ const ConnectionPatch = Connection.omit({ id: true })
     'Provide at least one changed field',
   );
 export const Operation = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('rehearsal.record'),
+    id: Id,
+    afterEventId: Id.nullable(),
+    event: RehearsalEvent,
+  }),
   z.strictObject({
     type: z.literal('project.vision.set'),
     vision: ProjectVision,
@@ -156,7 +191,7 @@ export const Operation = z.discriminatedUnion('type', [
   }),
   z.strictObject({
     type: z.literal('scene.create'),
-    scene: Scene,
+    scene: Scene.omit({ rehearsalEvents: true }),
     placement: z.strictObject({ nearSceneId: Id }).optional(),
   }),
   z.strictObject({

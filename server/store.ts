@@ -15,6 +15,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import sharp, { type Metadata } from 'sharp';
 import { z } from 'zod';
+import { workflowError } from '../shared/rehearsal.js';
 import { BaselineName } from '../shared/storyboard.js';
 import {
   Id,
@@ -273,6 +274,10 @@ export class Store extends EventEmitter {
         assetSuggestions: source.assetSuggestions?.map(
           ({ result: _result, ...draft }) => draft,
         ),
+        scenes: source.scenes.map(
+          ({ rehearsalEvents: _events, ...scene }) => scene,
+        ),
+        rehearsalInputRevision: 0,
         contentRevision: 0,
         layoutRevision: 0,
         receipts: [],
@@ -621,9 +626,47 @@ export class Store extends EventEmitter {
         : undefined;
       if (priorVisualization && !priorVisualization.kind)
         priorVisualization.kind = 'visualization';
+      const workflowOnly = batch.operations.every(
+        (op) => op.type === 'rehearsal.record',
+      );
+      if (
+        !workflowOnly &&
+        batch.operations.some((op) => op.type === 'rehearsal.record')
+      )
+        fail(
+          'MIXED_REHEARSAL_BATCH',
+          'Record rehearsal events separately from storyboard edits.',
+        );
       const affected = new Set<string>();
       const updatedDrafts = new Set<string>();
       for (const [index, op] of batch.operations.entries()) {
+        if (op.type === 'rehearsal.record') {
+          if (!p.meshFoundryEnabled)
+            fail(
+              'HANDOFF_DISABLED',
+              'Enable Mesh Foundry handoff for this storyboard.',
+              403,
+            );
+          const scene = next.scenes.find(({ id }) => id === op.id);
+          if (!scene) fail('NOT_FOUND', 'Scene does not exist.', 404);
+          const events = (scene.rehearsalEvents ??= []);
+          if ((events.at(-1)?.eventId ?? null) !== op.afterEventId)
+            fail(
+              'STALE_REHEARSAL',
+              'The scene handoff changed. Reread before recording evidence.',
+              409,
+            );
+          const error = workflowError(
+            events,
+            op.event,
+            p.rehearsalInputRevision ?? p.contentRevision,
+            !!scene.rehearsalBrief,
+          );
+          if (error) fail('STALE_REHEARSAL', error, 409);
+          events.push(op.event);
+          affected.add(op.id);
+          continue;
+        }
         if (op.type === 'project.vision.set') {
           next.vision = op.vision;
           if (!next.storyboard) next.title = op.vision.name;
@@ -778,6 +821,9 @@ export class Store extends EventEmitter {
       if (dryRun) return { ...result, dryRun: true };
       if (unchangedResults) return result;
       next.contentRevision++;
+      next.rehearsalInputRevision = workflowOnly
+        ? (p.rehearsalInputRevision ?? p.contentRevision)
+        : next.contentRevision;
       next.updatedAt = new Date().toISOString();
       next.receipts.push({ id: batch.requestId, hash: digest, result });
       next.receipts = next.receipts.slice(-100);
@@ -928,6 +974,7 @@ export class Store extends EventEmitter {
           : Math.max(Date.now(), old!.layoutRevision + 1),
         updatedAt: new Date().toISOString(),
       };
+      restored.rehearsalInputRevision = restored.contentRevision;
       await this.validate(restored);
       if (p) await this.snapshot(p);
       else {
