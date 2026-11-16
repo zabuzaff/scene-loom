@@ -1,3 +1,4 @@
+import { developmentTargetKey, sceneDevelopment } from '../shared/development';
 import {
   assetNextAction,
   rehearsalState,
@@ -35,6 +36,7 @@ import {
   scenePrompt,
   assetGenerationPrompt,
   rehearsalPrepPrompt,
+  developmentPrompt,
   rehearsalReviewPrompt,
   rehearsalHandoffPrompt,
   rehearsalAssetPrompt,
@@ -106,6 +108,10 @@ function CanvasInner({
 }: Parameters<typeof Canvas>[0]) {
   const [nodes, setNodes] = useState<SceneNode[]>([]),
     [expanded, setExpanded] = useState<string | null>(null),
+    [selectedSlice, setSelectedSlice] = useState<{
+      sceneId: string;
+      sliceId: string;
+    }>(),
     [focusRequest, setFocusRequest] = useState(0),
     [search, setSearch] = useState(''),
     [searchOpen, setSearchOpen] = useState(false),
@@ -140,14 +146,56 @@ function CanvasInner({
       arrangement.current = null;
     };
   }, []);
+  const focus = useCallback(
+    (ids: string[]) => {
+      const existing = flow.getNodes().filter((n) => ids.includes(n.id));
+      if (existing.length)
+        return flow.fitView({
+          nodes: existing,
+          padding: 0.35,
+          duration: 450,
+          maxZoom: 1,
+        });
+    },
+    [flow],
+  );
+  const openRequest = useRef(0);
+  const openScene = useCallback(
+    (id: string, sliceId?: string) => {
+      const request = ++openRequest.current;
+      const nextSlice = sliceId ? { sceneId: id, sliceId } : undefined;
+      if (!flow.getNode(id)?.data.production) {
+        setSelectedSlice(nextSlice);
+        setExpanded(id);
+        setFocusRequest((value) => value + 1);
+        return;
+      }
+      setExpanded(null);
+      void Promise.resolve(focus([id])).then(() => {
+        if (!mounted.current || request !== openRequest.current) return;
+        setSelectedSlice(nextSlice);
+        setExpanded(id);
+      });
+    },
+    [flow, focus],
+  );
   const toggle = useCallback(
-    (id: string) => setExpanded((old) => (old === id ? null : id)),
-    [],
+    (id: string) => {
+      if (expanded === id) {
+        ++openRequest.current;
+        setSelectedSlice(undefined);
+        setExpanded(null);
+      } else {
+        openScene(id);
+      }
+    },
+    [expanded, openScene],
   );
   const copy = useCallback(
     async (
       id: string,
       action:
+        | 'development'
         | 'continue'
         | 'edit'
         | 'assets'
@@ -155,8 +203,11 @@ function CanvasInner({
         | 'rehearsal-review'
         | 'rehearsal-handoff'
         | AssetPromptAction,
-      requirementId?: string,
+      targetKey?: string,
+      sliceId?: string,
+      report = notify,
     ) => {
+      const requirementId = action === 'development' ? undefined : targetKey;
       const p = latest.current,
         s = p.scenes.find((s) => s.id === id);
       if (!s) return;
@@ -176,7 +227,8 @@ function CanvasInner({
             next ||
             !state.head ||
             !asset ||
-            (action !== 'adopt-candidate' && assetNextAction(asset) !== action)
+            (action !== 'adopt-candidate' &&
+              assetNextAction(asset, state.head) !== action)
           )
             return;
         } else if (
@@ -195,6 +247,25 @@ function CanvasInner({
       )
         return;
       try {
+        if (action === 'development') {
+          const target = sceneDevelopment(p.development, id, sliceId);
+          if (
+            !sliceId ||
+            target?.next.id !== sliceId ||
+            developmentTargetKey(target) !== targetKey
+          ) {
+            report(
+              'The development action changed. Use the latest card action.',
+            );
+            return;
+          }
+          const prompt = developmentPrompt(info, p, id, sliceId);
+          if (prompt) {
+            await navigator.clipboard.writeText(prompt);
+            report('Development prompt copied. Paste it into your agent.');
+          }
+          return;
+        }
         await navigator.clipboard.writeText(
           action === 'assets'
             ? assetGenerationPrompt(info, p, s)
@@ -228,55 +299,69 @@ function CanvasInner({
           'adopt-candidate': 'Existing Foundry candidate',
           'rehearsal-correction': 'Rehearsal correction',
         };
-        notify(`${labels[action]} prompt copied. Paste it into your agent.`);
+        report(`${labels[action]} prompt copied. Paste it into your agent.`);
       } catch {
-        notify('Clipboard unavailable. Allow clipboard access and try again.');
+        report('Clipboard unavailable. Allow clipboard access and try again.');
       }
     },
     [info, notify],
   );
-  useEffect(
-    () =>
-      setNodes((old) =>
-        project.scenes.map((scene, index) => {
-          const existing = old.find((n) => n.id === scene.id);
-          return {
-            ...existing,
-            id: scene.id,
-            type: 'scene',
-            position: (arrangement.current?.movingIds.has(scene.id)
-              ? existing?.position
-              : undefined) ??
-              dirty.current[scene.id] ??
-              (dragging.current.has(scene.id)
-                ? existing?.position
-                : undefined) ??
-              project.positions[scene.id] ?? { x: 0, y: 0 },
-            zIndex: expanded === scene.id ? 10 : 0,
-            data: {
-              scene,
-              projectId: project.id,
-              number: index + 1,
-              expanded: expanded === scene.id,
-              recent: recent.includes(scene.id),
-              toggle,
-              copy,
-              rehearsalEnabled: !!project.meshFoundryEnabled,
-              rehearsalInputRevision:
-                project.rehearsalInputRevision ?? project.contentRevision,
-              assetSuggestions: project.meshFoundryEnabled
-                ? project.assetSuggestions?.filter(
-                    (suggestion) =>
-                      !suggestion.retired &&
-                      suggestion.sceneIds.includes(scene.id),
-                  )
-                : undefined,
-            },
-          };
-        }),
-      ),
-    [project, expanded, recent, toggle, copy],
-  );
+  useEffect(() => {
+    const game = /(?:\b(?:video ?games?|games?)$|^games? \()/i.test(
+      project.vision?.projectType.trim() ?? '',
+    );
+    const sceneTitles = Object.fromEntries(
+      project.scenes.map(({ id, title }) => [id, title]),
+    );
+    setNodes((old) =>
+      project.scenes.map((scene, index) => {
+        const development = sceneDevelopment(
+          project.development,
+          scene.id,
+          expanded === scene.id && selectedSlice?.sceneId === scene.id
+            ? selectedSlice.sliceId
+            : undefined,
+        );
+        const existing = old.find((n) => n.id === scene.id);
+        return {
+          ...existing,
+          id: scene.id,
+          type: 'scene',
+          style: { width: 300 },
+          position: (arrangement.current?.movingIds.has(scene.id)
+            ? existing?.position
+            : undefined) ??
+            dirty.current[scene.id] ??
+            (dragging.current.has(scene.id) ? existing?.position : undefined) ??
+            project.positions[scene.id] ?? { x: 0, y: 0 },
+          zIndex: expanded === scene.id ? 10 : 0,
+          data: {
+            scene,
+            projectId: project.id,
+            number: index + 1,
+            expanded: expanded === scene.id,
+            recent: recent.includes(scene.id),
+            toggle,
+            production: game || !!scene.rehearsalEvents?.length,
+            development,
+            openScene,
+            sceneTitles,
+            copy,
+            rehearsalEnabled: !!project.meshFoundryEnabled,
+            rehearsalInputRevision:
+              project.rehearsalInputRevision ?? project.contentRevision,
+            assetSuggestions: project.meshFoundryEnabled
+              ? project.assetSuggestions?.filter(
+                  (suggestion) =>
+                    !suggestion.retired &&
+                    suggestion.sceneIds.includes(scene.id),
+                )
+              : undefined,
+          },
+        };
+      }),
+    );
+  }, [project, expanded, selectedSlice, recent, toggle, copy, openScene]);
   const routingNodes = arrangement.current?.routingNodes ?? nodes;
   const edges = useMemo<Edge[]>(() => {
     const byId = new Map(
@@ -574,24 +659,11 @@ function CanvasInner({
     };
     animation.frame = requestAnimationFrame(step);
   }
-  const focus = useCallback(
-    (ids: string[]) => {
-      const existing = flow.getNodes().filter((n) => ids.includes(n.id));
-      if (existing.length)
-        void flow.fitView({
-          nodes: existing,
-          padding: 0.35,
-          duration: 450,
-          maxZoom: 1,
-        });
-    },
-    [flow],
-  );
   useEffect(() => {
-    if (!expanded) return;
+    if (!expanded || flow.getNode(expanded)?.data.production) return;
     const timer = setTimeout(() => focus([expanded]), 340);
     return () => clearTimeout(timer);
-  }, [expanded, focus, focusRequest]);
+  }, [expanded, flow, focus, focusRequest]);
   const results = project.scenes.filter((s) =>
     s.title.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
   );
@@ -610,7 +682,11 @@ function CanvasInner({
           void persist();
         }}
         onNodeClick={(_, n) => toggle(n.id)}
-        onPaneClick={() => setExpanded(null)}
+        onPaneClick={() => {
+          ++openRequest.current;
+          setSelectedSlice(undefined);
+          setExpanded(null);
+        }}
         nodesDraggable={!arranging}
         nodesConnectable={false}
         edgesReconnectable={false}
@@ -688,15 +764,13 @@ function CanvasInner({
                 <button
                   key={s.id}
                   onClick={() => {
-                    setExpanded(s.id);
+                    openScene(s.id);
                     setNodes((old) =>
                       old.map((node) => ({
                         ...node,
                         selected: node.id === s.id,
                       })),
                     );
-                    // Reuse the card-opening transition, even if this scene is already open.
-                    setFocusRequest((request) => request + 1);
                     setSearchOpen(false);
                   }}
                 >

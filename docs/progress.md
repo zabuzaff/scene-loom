@@ -238,3 +238,19 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 
 - 2026-11-16: Added the scene-scoped rehearsal event contract, visible next actions, and fixture coverage from draft review through model acceptance, fit corrections, and stale evidence. External Kairo integration remains a separate test.
 - Follow-up review added adoption of an existing Foundry revision, fresh review and fit after replacement, and status text for unresolved failures from earlier rehearsal revisions.
+
+## Scene card development and resume — 2026-11-16
+
+- Planning saves ordered development slices and exact plan fingerprints to the storyboard. Independent Ready review unlocks card actions. Shared slices, dependencies, exclusive claims, and checkpoints use the atomic CLI batch path; changing the plan retains old evidence and invalidates old claims.
+- Compact cards show the active or next slice. Expanded game cards add **Where you left off**, required asset fit, rehearsal and implementation indicators, and per-asset actions. Foundry review clearance, owner acceptance, current rehearsal fit, and implementation verification remain separate. Missing direct links fall back to the exact recorded identities.
+- Fixtures: run `npm run build` then `npm run test:browser -- progress.spec.ts` (add `--headed` to watch). Booking Studio: use **Copy start development prompt** on Search appointments, **Open Search appointments** on Confirm appointment, then **Copy continue development prompt** on Choose a time after the shared checkpoint. Tide Garden: use **Open Enter the garden**, then **Copy Foundry revision request** for Gate. In Foundry use **Copy developed model review prompt**, **Copy developed model correction prompt** if needed, and **Acceptance → Accept this revision** after clearance. Back in Scene Loom use **Copy Foundry acceptance verification prompt**, **Copy rehearsal fit-check prompt**, and **Copy rehearsal correction request** for an authorable issue. A saved capability blocker links to the affected rehearsal.
+- The fixture walkthrough uses isolated Scene Loom data and recorded stand-ins for external revisions. Live Kairo data and a live three-app trial are reserved for follow-up.
+- Verification: build, lint, formatting, 22 automated tests, and all seven Chrome tests passed. Inspected the compact ordinary and game cards and the expanded game card. The final fixture rerun verified the game card’s top correction action, preserved card position on expansion, saved dragging, canvas zoom, and scroll isolation. Independent review caught an incompatible Foundry verdict; the final record uses the existing candidate event shape with additive clearance evidence.
+- Review fixes let a prerequisite link select its exact slice even when another slice on the same card is active. Collapsed game cards count unmeasured required assets, and collapsed non-game cards summarize multiple asset handoffs. The Chrome fixtures cover exact slice selection and the open count after the measured asset passes.
+
+- Bound reviewed development plans to the target Git repository, including its linked worktrees. Plan replacement now rejects active claims until the agents checkpoint them.
+
+- Game scenes and scenes with rehearsal history open in a viewport-sized dialog. The canvas node stays compact and opening the dialog leaves the canvas zoom and position alone.
+- The scene dialog now opens with motion from the selected card. Its resume summary and progress sit side by side on desktop and stack on narrow screens. Asset actions are grouped by asset.
+- Production cards now wait for the canvas camera to focus the selected card before beginning the expansion animation.
+- Expanded scene cards use After Hours copy controls and accessible progress tracks that animate both on opening and when saved progress changes.

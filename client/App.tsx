@@ -396,13 +396,15 @@ export function App() {
                           Copy review development plan prompt{' '}
                           <ArrowUpRight size={15} />
                         </button>
-                        <button
-                          disabled={!info || !project.scenes.length}
-                          onClick={() => copyRepositoryPrompt('develop')}
-                        >
-                          Copy start development prompt{' '}
-                          <ArrowUpRight size={15} />
-                        </button>
+                        {!project.development && (
+                          <button
+                            disabled={!info || !project.scenes.length}
+                            onClick={() => copyRepositoryPrompt('develop')}
+                          >
+                            Copy start development prompt{' '}
+                            <ArrowUpRight size={15} />
+                          </button>
+                        )}
                         <button
                           disabled={!info}
                           onClick={() => copyRepositoryPrompt('resync')}

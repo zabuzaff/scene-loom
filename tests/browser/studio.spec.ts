@@ -1611,9 +1611,9 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
     expect(reviewPrompt).toContain('owner-confirmed library mapping');
     expect(reviewPrompt).toContain('Ready for model import or Blocked');
     expect(reviewPrompt).toContain('rehearsal.record');
-    const actions = lobby.getByRole('region', {
-      name: 'Rehearsal next action',
-    });
+    const actions = page.locator(
+      'dialog[open] .scene-rehearsal-actions, body:not(:has(dialog[open])) article[aria-label="Proposed lobby"] .scene-rehearsal-actions',
+    );
     const copyAction = async (name: string) => {
       await actions.getByRole('button', { name, exact: true }).click();
       return page.evaluate(() => navigator.clipboard.readText());
@@ -1824,8 +1824,9 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
       }),
     );
     expect(read()).toEqual(beforeOldHead);
-    await expect(lobby.getByText(brief.assets[0].behavior)).toBeVisible();
-    await expect(lobby.getByText(brief.gaps[0])).toBeVisible();
+    const production = page.getByRole('dialog', { name: 'Proposed lobby' });
+    await expect(production.getByText(brief.assets[0].behavior)).toBeVisible();
+    await expect(production.getByText(brief.gaps[0])).toBeVisible();
     await page.screenshot({ path: 'test-results/rehearsal-brief.png' });
     const saved = cli(['scene', 'read', target, 'lobby']).scene;
     expect(saved.rehearsalBrief.layout).toEqual(brief.layout);
@@ -1851,8 +1852,11 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
     await expect(copyPrompt).toBeVisible();
     await page.setViewportSize({ width: 390, height: 650 });
     await page.getByRole('button', { name: 'Fit all scenes' }).click();
-    const narrowFit = actions.getByRole('button', {
-      name: 'Copy rehearsal fit-check prompt for Directory sign',
+    await lobby.getByRole('button', { name: 'Open Proposed lobby' }).click();
+    await expect(production).toBeVisible();
+    expect((await production.boundingBox())!.width).toBeLessThan(390);
+    const narrowFit = production.getByRole('button', {
+      name: 'Copy rehearsal fit-check prompt · Directory sign',
     });
     await expect(narrowFit).toBeInViewport();
     await narrowFit.focus();
@@ -1913,6 +1917,10 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
     });
     await expect(actions).toContainText('Candidate awaiting review');
     await expect(actions).toContainText('In-scene fit: Untested');
+    await production
+      .getByRole('button', { name: 'Close scene details' })
+      .click();
+    await expect(production).toHaveCount(0);
     await trigger.click();
     const storyboards = page.getByRole('group', { name: 'Storyboards' });
     await expect(

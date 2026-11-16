@@ -951,3 +951,196 @@ test('asset suggestions and results stay scoped to the enabled storyboard', asyn
     { ...suggestion, sceneIds: ['a'], result, retired: true },
   ]);
 });
+
+test('reviewed slices share one checkpoint, enforce dependencies and reject stale claims and plans', async (t) => {
+  const { root, store, scene, batch } = await fixture(t);
+  await store.apply(
+    batch(
+      ['start', 'shared', 'later'].map((id) => ({
+        type: 'scene.create',
+        scene: scene(id),
+      })),
+    ),
+  );
+  const { sceneDevelopment } = await import('../shared/development.js');
+  const files = [{ path: 'docs/plan.md', sha256: 'a'.repeat(64) }];
+  const slices = [
+    {
+      id: 'entry',
+      name: 'Entry flow',
+      sceneIds: ['start', 'shared'],
+      dependencies: [],
+    },
+    {
+      id: 'outcome',
+      name: 'Outcome',
+      sceneIds: ['later'],
+      dependencies: ['entry'],
+    },
+    { id: 'fallback', name: 'Fallback', sceneIds: ['start'], dependencies: [] },
+  ];
+  let n = 1;
+  const apply = (op: unknown, revision = n) =>
+    store.apply({
+      ...batch([], revision, `dev_${revision}_${JSON.stringify(op).length}`),
+      operations: [op],
+    });
+  const plan = {
+    type: 'development.plan.set',
+    plan: { repository: '/fixture/.git', files, slices },
+  } as const;
+  const review = {
+    type: 'development.plan.review',
+    planRevision: 2,
+    review: {
+      verdict: 'ready',
+      evidence: 'Checked the exact Markdown and scope.',
+    },
+  } as const;
+  const start = {
+    type: 'development.start',
+    planRevision: 2,
+    sceneId: 'start',
+    sliceId: 'entry',
+    afterClaimId: null,
+    claimId: 'run1',
+  } as const;
+  const checkpoint = {
+    type: 'development.checkpoint',
+    planRevision: 2,
+    sliceId: 'entry',
+    claimId: 'run1',
+    checkpoint: {
+      status: 'needs-verification',
+      changed: 'Added the entry route.',
+      remaining: 'Check reload.',
+      resume: 'Open /entry after npm start.',
+      evidence: ['Route test passed.'],
+    },
+  } as const;
+  await assert.rejects(
+    apply({
+      ...plan,
+      plan: {
+        ...plan.plan,
+        files,
+        slices: [{ ...slices[0], dependencies: ['entry'] }],
+      },
+    }),
+    hasCode('INVALID_DEVELOPMENT_PLAN'),
+  );
+  await apply(plan);
+  n++;
+  await assert.rejects(apply(start), hasCode('DEVELOPMENT_REVIEW_REQUIRED'));
+  await apply(review);
+  n++;
+  await assert.rejects(
+    apply({ ...start, sceneId: 'later', sliceId: 'outcome' }),
+    hasCode('DEVELOPMENT_NOT_READY'),
+  );
+  assert.equal(
+    sceneDevelopment((await store.read('test')).development, 'later')?.next
+      .prerequisite?.id,
+    'entry',
+  );
+  await apply(start);
+  n++;
+  await assert.rejects(
+    apply({ ...start, sceneId: 'shared', claimId: 'racing' }, 3),
+    hasCode('CONTENT_CONFLICT'),
+  );
+  await assert.rejects(
+    apply({ ...start, sceneId: 'shared', claimId: 'racing-now' }),
+    hasCode('DEVELOPMENT_NOT_READY'),
+  );
+  await assert.rejects(
+    apply({
+      ...checkpoint,
+      checkpoint: {
+        ...checkpoint.checkpoint,
+        status: 'verified',
+        evidence: [],
+      },
+    }),
+    hasCode('MISSING_DEVELOPMENT_EVIDENCE'),
+  );
+  await apply({
+    ...checkpoint,
+    checkpoint: {
+      ...checkpoint.checkpoint,
+      evidence: [...checkpoint.checkpoint.evidence],
+    },
+  });
+  n++;
+  const persisted = await new Store(root).read('test');
+  assert.equal(persisted.rehearsalInputRevision, 1);
+  for (const id of ['start', 'shared'])
+    assert.equal(
+      sceneDevelopment(persisted.development, id)?.next.latest?.checkpoint
+        .resume,
+      checkpoint.checkpoint.resume,
+    );
+  await assert.rejects(
+    apply({ ...start, claimId: 'old_restart' }),
+    hasCode('DEVELOPMENT_NOT_READY'),
+  );
+  await apply({ ...start, claimId: 'run2', afterClaimId: 'run1' });
+  n++;
+  await apply({
+    ...checkpoint,
+    claimId: 'run2',
+    checkpoint: {
+      ...checkpoint.checkpoint,
+      status: 'verified',
+      evidence: ['Reload passed.'],
+    },
+  });
+  n++;
+  assert.equal(
+    sceneDevelopment((await store.read('test')).development, 'later')?.next
+      .prerequisite,
+    undefined,
+  );
+  await apply({
+    ...start,
+    sceneId: 'later',
+    sliceId: 'outcome',
+    claimId: 'later1',
+  });
+  n++;
+  const replacement = {
+    ...plan,
+    plan: {
+      ...plan.plan,
+      files: [{ ...files[0], sha256: 'b'.repeat(64) }],
+      slices,
+    },
+  };
+  await assert.rejects(apply(replacement), hasCode('DEVELOPMENT_ACTIVE_CLAIM'));
+  await apply({ ...checkpoint, sliceId: 'outcome', claimId: 'later1' });
+  n++;
+  await apply(replacement);
+  n++;
+  await assert.rejects(
+    apply({
+      ...checkpoint,
+      sliceId: 'outcome',
+      claimId: 'later1',
+      checkpoint: { ...checkpoint.checkpoint, evidence: [] },
+    }),
+    hasCode('STALE_DEVELOPMENT'),
+  );
+  const rereview = sceneDevelopment(
+    (await store.read('test')).development,
+    'shared',
+  );
+  assert.equal(rereview?.reviewed, false);
+  assert.equal(rereview?.next.status, 'planned');
+  assert.deepEqual(rereview?.next.latest?.checkpoint.evidence, [
+    'Reload passed.',
+  ]);
+  const fork = await store.createStoryboard('test', {
+    name: 'Another approach',
+  });
+  assert.equal(fork.development, undefined);
+});

@@ -1217,3 +1217,342 @@ kbd {
 .scene-rehearsal-brief summary {
   cursor: pointer;
 }
+
+.scene-progress-action {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--soft);
+  overflow-wrap: anywhere;
+}
+.scene-progress-action p {
+  margin: 3px 0;
+}
+.scene-progress-action strong {
+  color: var(--text);
+}
+.scene-progress-action button {
+  margin-top: 6px;
+  padding: 7px 8px;
+  background: var(--surface-hover);
+  border-radius: 6px;
+  color: var(--accent);
+}
+.scene-development-details,
+.game-resume {
+  overflow-wrap: anywhere;
+}
+.scene-development-details details + details {
+  margin-top: 6px;
+}
+.scene-development-details summary,
+.game-resume summary {
+  cursor: pointer;
+}
+.game-resume {
+  padding: 0 0 12px;
+}
+.game-resume h3 {
+  margin-top: 0;
+}
+.game-resume-result {
+  color: var(--text);
+}
+.game-progress {
+  margin: 12px 0;
+}
+.game-progress > div {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.game-progress dt {
+  color: var(--text);
+  font-weight: 600;
+}
+.game-progress dd {
+  margin: 0;
+}
+.scene-rehearsal-actions a,
+.game-resume a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+.rehearsal-asset-row {
+  padding-block: 9px;
+}
+.rehearsal-asset-row + .rehearsal-asset-row {
+  border-top: 1px solid var(--line);
+}
+
+.scene-detail .game-resume {
+  margin-top: 4px;
+}
+.scene-detail .game-resume h3 {
+  color: var(--text);
+  font-size: 13px;
+}
+.game-resume-result + p {
+  margin-top: 4px;
+}
+.rehearsal-earlier-assets {
+  margin-top: 8px;
+}
+
+.scene-inline-action {
+  display: inline;
+  padding: 0;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.scene-inline-action:hover {
+  color: var(--accent-hover);
+}
+
+.scene-production-dialog {
+  width: min(960px, calc(100vw - 32px));
+  max-height: min(820px, calc(100dvh - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 24px 96px rgb(0 0 0 / 55%);
+  background: var(--surface);
+  color: var(--text);
+}
+.scene-production-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.scene-production-dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+.scene-production-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 20px clamp(16px, 4vw, 36px);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--line);
+}
+.scene-production-dialog > header h2 {
+  margin: 0;
+  font: 700 clamp(18px, 3vw, 26px) var(--font-display);
+}
+.scene-production-body {
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: clamp(16px, 4vw, 36px);
+  scrollbar-gutter: stable;
+}
+.scene-production-dialog .scene-detail-inner {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+.scene-production-dialog .scene-rehearsal-actions {
+  padding-inline: 0;
+}
+.scene-production-notice {
+  padding: 10px 22px;
+  border-top: 1px solid var(--line);
+  color: var(--accent);
+}
+
+.scene-production-dialog[open]::backdrop {
+  animation: scene-backdrop-in 230ms ease-out;
+}
+@keyframes scene-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+/* The expanded card uses the same uninterrupted surface as the canvas card. */
+.scene-card-expanded-away {
+  opacity: 0;
+}
+.scene-production-dialog {
+  transform-origin: top left;
+  background: var(--card);
+}
+.scene-production-dialog > header {
+  background: transparent;
+}
+.scene-production-dialog > header h2 {
+  font-size: clamp(22px, 4vw, 34px);
+}
+.scene-production-body {
+  animation: scene-details-in 270ms 55ms both;
+}
+.scene-production-dialog[data-collapsing] .scene-production-body {
+  animation: scene-details-out 140ms both;
+}
+.scene-production-dialog[data-collapsing]::backdrop {
+  animation: scene-details-out 220ms both;
+}
+@keyframes scene-details-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes scene-details-out {
+  to {
+    opacity: 0;
+  }
+}
+.scene-production-cover {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  background: var(--ground);
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+.scene-production-dialog .game-resume {
+  margin: 0;
+  padding: 0;
+}
+.scene-production-dialog .game-resume-summary h3 {
+  margin-bottom: 8px;
+  font: 700 20px var(--font-display);
+}
+.scene-production-dialog .game-resume-result {
+  font-size: 14px;
+}
+.scene-production-dialog .game-resume-summary > p + p {
+  margin-top: 6px;
+}
+.scene-production-dialog .game-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  border-block: 1px solid var(--line);
+  margin: 20px 0 12px;
+}
+.scene-production-dialog .game-progress > div {
+  display: block;
+  border: 0;
+  padding: 12px 0;
+}
+.scene-production-dialog .game-progress dd {
+  margin-top: 4px;
+  color: var(--soft);
+}
+.scene-production-dialog .scene-progress-action,
+.scene-production-dialog .scene-rehearsal-actions {
+  margin-top: 18px;
+  padding: 12px 0;
+}
+.scene-production-dialog .scene-progress-action button,
+.scene-production-dialog .rehearsal-asset-row button {
+  width: auto;
+  max-width: 100%;
+  margin-right: 8px;
+}
+.scene-production-dialog .rehearsal-asset-row {
+  padding: 14px 0;
+}
+.scene-production-dialog .rehearsal-asset-row > strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+@media (max-width: 560px) {
+  .scene-production-dialog .game-progress {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .scene-production-dialog .game-progress > div + div {
+    border-top: 1px solid var(--line);
+  }
+}
+
+.scene-production-dialog .studio-copy-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0 4px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 650;
+  text-decoration: none;
+  transition:
+    background 160ms ease,
+    transform 160ms ease;
+}
+.scene-production-dialog .studio-copy-action:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+.scene-production-dialog .studio-copy-action:active {
+  transform: translateY(0);
+}
+.studio-copy-action > svg {
+  flex: none;
+}
+.studio-progress-track {
+  height: 7px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--ground);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.studio-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left;
+  animation: studio-progress-reveal 380ms 140ms cubic-bezier(0.2, 0.7, 0.3, 1)
+    both;
+  transition: width 260ms ease;
+}
+@keyframes studio-progress-reveal {
+  from {
+    transform: scaleX(0);
+  }
+}
+.scene-production-dialog .game-progress dt {
+  color: var(--accent);
+  font-size: 12px;
+}
+.scene-production-dialog .game-progress dd {
+  line-height: 1.55;
+}
+.scene-production-dialog .game-progress > div {
+  padding-block: 15px;
+}
+.scene-production-dialog .scene-progress-action button,
+.scene-production-dialog .rehearsal-asset-row button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding-inline: 12px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+.scene-production-dialog .scene-progress-action button:hover,
+.scene-production-dialog .rehearsal-asset-row button:hover {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+.scene-production-dialog summary {
+  color: var(--soft);
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+.scene-production-dialog summary:hover,
+.scene-production-dialog details[open] > summary {
+  color: var(--accent);
+}

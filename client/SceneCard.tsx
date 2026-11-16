@@ -1,4 +1,12 @@
-import { Fragment, memo, useState } from 'react';
+import {
+  Fragment,
+  memo,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 import {
   Handle,
   Position,
@@ -7,15 +15,25 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUpRight, PencilLine, ChevronDown, Shapes } from 'lucide-react';
+import { ArrowUpRight, PencilLine, ChevronDown, Shapes, X } from 'lucide-react';
 import type { ProjectData, SceneData } from '../shared/schema';
 import {
   assetNextAction,
   fitIsCurrent,
   rehearsalState,
   sceneNextAction,
+  type Handoff,
 } from '../shared/rehearsal';
 import type { AssetPromptAction } from './api';
+import type { sceneDevelopment } from '../shared/development';
+import {
+  DevelopmentAction,
+  DevelopmentDetails,
+  ExternalRevision,
+  GameResume,
+  isRequiredAsset,
+  requiredRehearsalAssets,
+} from './SceneProgress';
 
 export type CardData = {
   scene: SceneData;
@@ -24,12 +42,17 @@ export type CardData = {
   expanded: boolean;
   recent: boolean;
   rehearsalEnabled: boolean;
+  production: boolean;
+  development: ReturnType<typeof sceneDevelopment>;
+  sceneTitles: Record<string, string>;
+  openScene: (id: string, sliceId?: string) => void;
   rehearsalInputRevision: number;
   assetSuggestions?: NonNullable<ProjectData['assetSuggestions']>;
   toggle: (id: string) => void;
   copy: (
     id: string,
     action:
+      | 'development'
       | 'continue'
       | 'edit'
       | 'assets'
@@ -38,6 +61,8 @@ export type CardData = {
       | 'rehearsal-handoff'
       | AssetPromptAction,
     requirementId?: string,
+    sliceId?: string,
+    report?: (message: string) => void,
   ) => void;
 };
 export type SceneNode = Node<CardData, 'scene'>;
@@ -47,6 +72,16 @@ export const SceneCard = memo(function SceneCard({
   selected,
 }: NodeProps<SceneNode>) {
   const update = useUpdateNodeInternals();
+  const card = useRef<HTMLElement>(null);
+  const [notice, setNotice] = useState('');
+  const detailData: CardData =
+    data.production && data.expanded
+      ? {
+          ...data,
+          copy: (sceneId, action, key, sliceId) =>
+            data.copy(sceneId, action, key, sliceId, setNotice),
+        }
+      : data;
   const { mainAssetId, description, rehearsalBrief } = data.scene;
   const hasNumberedTitle = /^[1-9]\d*(?:\.[1-9]\d*)* — \S/.test(
     data.scene.title,
@@ -57,9 +92,198 @@ export const SceneCard = memo(function SceneCard({
   const showAssetAction = !!data.assetSuggestions?.length;
   const image = (assetId: string, thumbnail = true) =>
     `/api/projects/${data.projectId}/assets/${assetId}${thumbnail ? '?thumbnail=true' : ''}`;
+  const details = data.expanded ? (
+    <div className="scene-detail-inner">
+      {data.production && (
+        <>
+          <GameResume data={detailData} />
+          <DevelopmentAction data={detailData} />
+        </>
+      )}
+      {data.production && data.rehearsalEnabled && (
+        <RehearsalActions data={detailData} />
+      )}
+      <DevelopmentDetails data={detailData} />
+      <p>{data.scene.description}</p>
+      {data.scene.notes && (
+        <section>
+          <h3>Creative notes</h3>
+          <p>{data.scene.notes}</p>
+        </section>
+      )}
+      {showAssetAction && (
+        <section>
+          <h3>Asset suggestions</h3>
+          {data.assetSuggestions?.map((suggestion) => (
+            <div key={suggestion.id}>
+              <strong>{suggestion.name}</strong>
+              <p>{suggestion.description}</p>
+              <p>{suggestion.explanation}</p>
+              {suggestion.result && (
+                <p>Mesh Foundry revision {suggestion.result.revisionId}</p>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+      {rehearsalBrief && (
+        <section className="scene-rehearsal-brief">
+          <h3>Draft rehearsal brief</h3>
+          <p>{rehearsalBrief.layout}</p>
+          <h4>Scenarios</h4>
+          <ul>
+            {rehearsalBrief.scenarios.map((scenario, index) => (
+              <li key={index}>{scenario}</li>
+            ))}
+          </ul>
+          {rehearsalBrief.assets.map((asset, index) => (
+            <div key={index}>
+              <strong>
+                {asset.name} · {asset.decision}
+              </strong>
+              <p>{asset.rationale}</p>
+              <p>{asset.behavior}</p>
+              {asset.source && (
+                <p>Mesh Foundry revision {asset.source.revisionId}</p>
+              )}
+            </div>
+          ))}
+          {rehearsalBrief.gaps.length > 0 && (
+            <>
+              <h4>Gaps</h4>
+              <ul>
+                {rehearsalBrief.gaps.map((gap, index) => (
+                  <li key={index}>{gap}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+      {!!data.scene.rehearsalEvents?.length && (
+        <section className="scene-rehearsal-brief">
+          <h3>Rehearsal findings</h3>
+          {[...data.scene.rehearsalEvents].reverse().map((event) => (
+            <details key={event.eventId} className="nodrag">
+              <summary>
+                {event.kind === 'review'
+                  ? `Brief review: ${event.blockout}`
+                  : event.kind === 'draft'
+                    ? `Rehearsal: ${event.draft.revisionId}`
+                    : event.kind === 'candidate'
+                      ? `Candidate${event.clearedReview ? ' review cleared' : ''}: ${event.model.revisionId}`
+                      : event.kind === 'candidate-review'
+                        ? `Foundry review: ${event.verdict}`
+                        : `Fit check: ${event.verdict.replace('-', ' ')}`}
+              </summary>
+              <p>Record: {event.eventId}</p>
+              {event.kind === 'review' && (
+                <p>
+                  {event.scope} · Model import: {event.imports}
+                </p>
+              )}
+              {event.kind === 'draft' && (
+                <>
+                  <p>Rehearsal reference: {event.draft.link}</p>
+                  {event.requirements.map((requirement) => (
+                    <div key={requirement.id}>
+                      <h4>{requirement.name}</h4>
+                      <p>
+                        Source: {requirement.source.libraryId} /{' '}
+                        {requirement.source.assetId} /{' '}
+                        {requirement.source.revisionId}
+                      </p>
+                      <p>Objects: {requirement.objects.join(', ')}</p>
+                      <ul>
+                        {requirement.measurements.map(
+                          ({ label, value, unit }, index) => (
+                            <li key={index}>
+                              {label}: {value} {unit}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                      <p>Changes: {requirement.changes.join('; ')}</p>
+                      <p>Preserve: {requirement.preserve.join('; ')}</p>
+                      <p>Checks: {requirement.checks.join('; ')}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+              {'model' in event && (
+                <p>
+                  Model: {event.model.libraryId} / {event.model.assetId} /{' '}
+                  {event.model.revisionId}
+                </p>
+              )}
+              {event.kind === 'fit' && (
+                <p>
+                  Checked rehearsal:{' '}
+                  {event.assembled?.revisionId ?? event.rehearsalRevisionId}
+                  {event.assembled && <> · {event.assembled.link}</>}
+                </p>
+              )}
+              {'requirementId' in event && (
+                <p>Requirement: {event.requirementId}</p>
+              )}
+              {event.kind === 'candidate' && event.clearedReview && (
+                <p>{event.clearedReview.evidence.join('; ')}</p>
+              )}
+              {'evidence' in event && (
+                <ul>
+                  {event.evidence.map((note, index) => (
+                    <li key={index}>{note}</li>
+                  ))}
+                </ul>
+              )}
+              {'findings' in event && (
+                <ul>
+                  {event.findings.map((note, index) => (
+                    <li key={index}>{note}</li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          ))}
+        </section>
+      )}
+      {data.scene.supportingAssetIds.length > 0 && (
+        <section>
+          <h3>Supporting visuals</h3>
+          <div className="supporting-images">
+            {data.scene.supportingAssetIds.map((a) => (
+              <a
+                key={a}
+                href={image(a, false)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img
+                  src={image(a)}
+                  alt={`Supporting visual for ${data.scene.title}`}
+                  loading="lazy"
+                />
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+      {mainAssetId && (
+        <a
+          className="original-link"
+          href={image(mainAssetId, false)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View full image <ArrowUpRight size={12} />
+        </a>
+      )}
+    </div>
+  ) : null;
   return (
     <article
-      className={`scene-card ${selected ? 'is-selected' : ''} ${data.expanded ? 'is-open' : ''} ${data.recent ? 'is-recent' : ''}`}
+      ref={card}
+      className={`scene-card ${selected ? 'is-selected' : ''} ${data.expanded && !data.production ? 'is-open' : ''} ${data.recent ? 'is-recent' : ''}`}
       aria-label={data.scene.title}
     >
       {[Position.Left, Position.Right, Position.Top, Position.Bottom].map(
@@ -113,12 +337,31 @@ export const SceneCard = memo(function SceneCard({
           <ChevronDown size={17} className={data.expanded ? 'rotated' : ''} />
         </button>
       </div>
-      {!mainAssetId && !data.expanded && description && (
+      {!mainAssetId && (!data.expanded || data.production) && description && (
         <p className="scene-text-preview">{description}</p>
       )}
-      {data.rehearsalEnabled && <RehearsalActions data={data} />}
+      <DevelopmentAction data={data} />
+      {data.rehearsalEnabled && (
+        <RehearsalActions
+          data={data.production ? { ...data, expanded: false } : data}
+        />
+      )}
+      {data.production && data.expanded && (
+        <SceneDialog
+          title={data.scene.title}
+          origin={card}
+          cover={mainAssetId ? image(mainAssetId) : undefined}
+          close={() => {
+            setNotice('');
+            data.toggle(id);
+          }}
+          notice={notice}
+        >
+          {details}
+        </SceneDialog>
+      )}
       <AnimatePresence initial={false}>
-        {data.expanded && (
+        {!data.production && data.expanded && (
           <motion.div
             className="scene-detail nodrag nopan nowheel"
             initial={{ height: 0, opacity: 0 }}
@@ -129,182 +372,7 @@ export const SceneCard = memo(function SceneCard({
             onAnimationComplete={() => update(id)}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="scene-detail-inner">
-              <p>{data.scene.description}</p>
-              {data.scene.notes && (
-                <section>
-                  <h3>Creative notes</h3>
-                  <p>{data.scene.notes}</p>
-                </section>
-              )}
-              {showAssetAction && (
-                <section>
-                  <h3>Asset suggestions</h3>
-                  {data.assetSuggestions?.map((suggestion) => (
-                    <div key={suggestion.id}>
-                      <strong>{suggestion.name}</strong>
-                      <p>{suggestion.description}</p>
-                      <p>{suggestion.explanation}</p>
-                      {suggestion.result && (
-                        <p>
-                          Mesh Foundry revision {suggestion.result.revisionId}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </section>
-              )}
-              {rehearsalBrief && (
-                <section className="scene-rehearsal-brief">
-                  <h3>Draft rehearsal brief</h3>
-                  <p>{rehearsalBrief.layout}</p>
-                  <h4>Scenarios</h4>
-                  <ul>
-                    {rehearsalBrief.scenarios.map((scenario, index) => (
-                      <li key={index}>{scenario}</li>
-                    ))}
-                  </ul>
-                  {rehearsalBrief.assets.map((asset, index) => (
-                    <div key={index}>
-                      <strong>
-                        {asset.name} · {asset.decision}
-                      </strong>
-                      <p>{asset.rationale}</p>
-                      <p>{asset.behavior}</p>
-                      {asset.source && (
-                        <p>Mesh Foundry revision {asset.source.revisionId}</p>
-                      )}
-                    </div>
-                  ))}
-                  {rehearsalBrief.gaps.length > 0 && (
-                    <>
-                      <h4>Gaps</h4>
-                      <ul>
-                        {rehearsalBrief.gaps.map((gap, index) => (
-                          <li key={index}>{gap}</li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </section>
-              )}
-              {!!data.scene.rehearsalEvents?.length && (
-                <section className="scene-rehearsal-brief">
-                  <h3>Rehearsal findings</h3>
-                  {[...data.scene.rehearsalEvents].reverse().map((event) => (
-                    <details key={event.eventId} className="nodrag">
-                      <summary>
-                        {event.kind === 'review'
-                          ? `Brief review: ${event.blockout}`
-                          : event.kind === 'draft'
-                            ? `Rehearsal: ${event.draft.revisionId}`
-                            : event.kind === 'candidate'
-                              ? `Candidate: ${event.model.revisionId}`
-                              : event.kind === 'candidate-review'
-                                ? `Foundry review: ${event.verdict}`
-                                : `Fit check: ${event.verdict.replace('-', ' ')}`}
-                      </summary>
-                      <p>Record: {event.eventId}</p>
-                      {event.kind === 'review' && (
-                        <p>
-                          {event.scope} · Model import: {event.imports}
-                        </p>
-                      )}
-                      {event.kind === 'draft' && (
-                        <>
-                          <p>Rehearsal reference: {event.draft.link}</p>
-                          {event.requirements.map((requirement) => (
-                            <div key={requirement.id}>
-                              <h4>{requirement.name}</h4>
-                              <p>
-                                Source: {requirement.source.libraryId} /{' '}
-                                {requirement.source.assetId} /{' '}
-                                {requirement.source.revisionId}
-                              </p>
-                              <p>Objects: {requirement.objects.join(', ')}</p>
-                              <ul>
-                                {requirement.measurements.map(
-                                  ({ label, value, unit }, index) => (
-                                    <li key={index}>
-                                      {label}: {value} {unit}
-                                    </li>
-                                  ),
-                                )}
-                              </ul>
-                              <p>Changes: {requirement.changes.join('; ')}</p>
-                              <p>Preserve: {requirement.preserve.join('; ')}</p>
-                              <p>Checks: {requirement.checks.join('; ')}</p>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                      {'model' in event && (
-                        <p>
-                          Model: {event.model.libraryId} / {event.model.assetId}{' '}
-                          / {event.model.revisionId}
-                        </p>
-                      )}
-                      {event.kind === 'fit' && (
-                        <p>
-                          Checked rehearsal:{' '}
-                          {event.assembled?.revisionId ??
-                            event.rehearsalRevisionId}
-                          {event.assembled && <> · {event.assembled.link}</>}
-                        </p>
-                      )}
-                      {'requirementId' in event && (
-                        <p>Requirement: {event.requirementId}</p>
-                      )}
-                      {'evidence' in event && (
-                        <ul>
-                          {event.evidence.map((note, index) => (
-                            <li key={index}>{note}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {'findings' in event && (
-                        <ul>
-                          {event.findings.map((note, index) => (
-                            <li key={index}>{note}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </details>
-                  ))}
-                </section>
-              )}
-              {data.scene.supportingAssetIds.length > 0 && (
-                <section>
-                  <h3>Supporting visuals</h3>
-                  <div className="supporting-images">
-                    {data.scene.supportingAssetIds.map((a) => (
-                      <a
-                        key={a}
-                        href={image(a, false)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <img
-                          src={image(a)}
-                          alt={`Supporting visual for ${data.scene.title}`}
-                          loading="lazy"
-                        />
-                      </a>
-                    ))}
-                  </div>
-                </section>
-              )}
-              {mainAssetId && (
-                <a
-                  className="original-link"
-                  href={image(mainAssetId, false)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  View full image <ArrowUpRight size={12} />
-                </a>
-              )}
-            </div>
+            {details}
           </motion.div>
         )}
       </AnimatePresence>
@@ -349,6 +417,104 @@ export const SceneCard = memo(function SceneCard({
   );
 });
 
+function cardTransform(dialog: HTMLElement, card: HTMLElement | null) {
+  if (!card) return 'translateY(16px) scale(.96)';
+  const source = card.getBoundingClientRect();
+  const target = dialog.getBoundingClientRect();
+  return `translate(${source.left - target.left}px, ${source.top - target.top}px) scale(${source.width / target.width}, ${source.height / target.height})`;
+}
+
+function SceneDialog({
+  title,
+  origin,
+  cover,
+  close,
+  notice,
+  children,
+}: {
+  title: string;
+  origin: { current: HTMLElement | null };
+  cover?: string;
+  close: () => void;
+  notice: string;
+  children: ReactNode;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const motion = useRef<Animation | null>(null);
+  const closing = useRef(false);
+
+  useLayoutEffect(() => {
+    const element = dialog.current!;
+    element.showModal();
+    motion.current = element.animate(
+      [
+        { transform: cardTransform(element, origin.current) },
+        { transform: 'none' },
+      ],
+      { duration: 320, easing: 'cubic-bezier(.22,.8,.24,1)' },
+    );
+    const source = origin.current;
+    source?.classList.add('scene-card-expanded-away');
+    return () => {
+      motion.current?.cancel();
+      source?.classList.remove('scene-card-expanded-away');
+      element.close();
+    };
+  }, [origin]);
+
+  function collapse() {
+    if (closing.current) return;
+    const element = dialog.current!;
+    closing.current = true;
+    const current = getComputedStyle(element).transform;
+    motion.current?.cancel();
+    element.dataset.collapsing = '';
+    const animation = element.animate(
+      [
+        { transform: current },
+        { transform: cardTransform(element, origin.current) },
+      ],
+      { duration: 220, easing: 'cubic-bezier(.5,0,.75,.4)', fill: 'forwards' },
+    );
+    motion.current = animation;
+    void animation.finished.then(close, () => {});
+  }
+
+  return createPortal(
+    <dialog
+      ref={dialog}
+      className="scene-production-dialog scene-detail"
+      aria-label={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        collapse();
+      }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <header>
+        <h2>{title}</h2>
+        <button
+          className="icon-button"
+          aria-label="Close scene details"
+          onClick={collapse}
+        >
+          <X size={20} />
+        </button>
+      </header>
+      <div className="scene-production-body">
+        {cover && <img className="scene-production-cover" src={cover} alt="" />}
+        {children}
+      </div>
+      {notice && (
+        <div role="status" className="scene-production-notice">
+          {notice}
+        </div>
+      )}
+    </dialog>,
+    document.body,
+  );
+}
+
 const actionLabels = {
   rehearsal: 'Copy rehearsal prep prompt',
   'rehearsal-review': 'Copy rehearsal review prompt',
@@ -361,7 +527,6 @@ const actionLabels = {
 } as const;
 
 function RehearsalActions({ data }: { data: CardData }) {
-  const [selected, select] = useState('');
   const { id, title, rehearsalBrief, rehearsalEvents } = data.scene;
   const state = rehearsalState(rehearsalEvents);
   const { review, head, assets } = state;
@@ -370,30 +535,38 @@ function RehearsalActions({ data }: { data: CardData }) {
     data.rehearsalInputRevision,
     state,
   );
-  const asset =
-    assets.find(({ requirement }) => requirement.id === selected) ?? assets[0];
   const copy = (
     action: keyof typeof actionLabels,
-    requirementId?: string,
+    asset?: Handoff,
     text: string = actionLabels[action],
     secondary = false,
   ) => (
     <button
       className={secondary ? 'rehearsal-secondary' : undefined}
-      aria-label={`${text} for ${requirementId ? asset.requirement.name : title}`}
+      aria-label={`${text} for ${asset?.requirement.name ?? title}`}
       onClick={(event) => {
         event.stopPropagation();
-        data.copy(id, action, requirementId);
+        data.copy(id, action, asset?.requirement.id);
       }}
     >
       {text}
     </button>
   );
-  const currentFit = asset && fitIsCurrent(asset, head);
+  const { required, unmeasured } = requiredRehearsalAssets(data.scene, assets);
+  const compact =
+    !data.expanded &&
+    (data.production
+      ? assets.length > 0 || unmeasured.length > 0
+      : assets.length > 1);
+  const openChecks =
+    required.filter(
+      (asset) => !(fitIsCurrent(asset, head) && asset.fit?.verdict === 'pass'),
+    ).length + unmeasured.length;
   return (
     <section
       className="scene-rehearsal-actions scene-asset-action nodrag"
       aria-label="Rehearsal next action"
+      onClick={(event) => event.stopPropagation()}
     >
       <p>
         {!rehearsalBrief
@@ -416,55 +589,133 @@ function RehearsalActions({ data }: { data: CardData }) {
             ? 'Copy rehearsal brief correction'
             : undefined,
         )
-      ) : asset && head ? (
+      ) : compact ? (
+        <p>
+          {openChecks} required asset fit{' '}
+          {openChecks === 1 ? 'check' : 'checks'} open · Open scene for actions
+        </p>
+      ) : assets.length && head ? (
         <>
-          {assets.length > 1 ? (
-            <label>
-              Asset
-              <select
-                className="nodrag"
-                value={asset.requirement.id}
-                onChange={(event) => select(event.target.value)}
-              >
-                {assets.map(({ requirement }) => (
-                  <option value={requirement.id} key={requirement.id}>
-                    {requirement.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <strong>{asset.requirement.name}</strong>
-          )}
-          <p>
-            Foundry:{' '}
-            {asset.acceptance?.verdict === 'accepted'
-              ? 'Accepted'
-              : asset.acceptance
-                ? 'Needs revision'
-                : asset.candidate
-                  ? 'Candidate awaiting review'
-                  : 'Revision needed'}
-          </p>
-          <p>
-            In-scene fit:{' '}
-            {currentFit
-              ? asset.fit?.verdict === 'pass'
-                ? 'Verified'
-                : asset.fit?.verdict === 'model-defect'
-                  ? 'Model defect'
-                  : 'Rehearsal issue'
-              : asset.fit?.verdict === 'model-defect'
-                ? 'Earlier rehearsal · Model correction needed'
-                : asset.fit?.verdict === 'rehearsal-issue'
-                  ? 'Earlier rehearsal · Rehearsal correction needed'
-                  : asset.fit
-                    ? 'Outdated · Repeat fit check'
-                    : 'Untested'}
-          </p>
-          {copy(assetNextAction(asset), asset.requirement.id)}
-          {data.expanded &&
-            copy('adopt-candidate', asset.requirement.id, undefined, true)}
+          {assets.map((asset) => {
+            const currentFit = fitIsCurrent(asset, head);
+            const action = assetNextAction(asset, head);
+            const model = asset.candidate?.model ?? asset.requirement.source;
+            const modelLink = asset.candidate
+              ? asset.candidate.modelLink
+              : asset.requirement.sourceLink;
+            const verified = currentFit && asset.fit?.verdict === 'pass';
+            return (
+              <div className="rehearsal-asset-row" key={asset.requirement.id}>
+                <strong>
+                  {asset.requirement.name}
+                  {!isRequiredAsset(data.scene, asset.requirement) &&
+                    ' · Optional'}
+                </strong>
+                <p>
+                  Foundry:{' '}
+                  {asset.acceptance?.verdict === 'accepted'
+                    ? 'Accepted'
+                    : asset.acceptance?.verdict === 'needs-revision'
+                      ? 'Needs revision'
+                      : asset.candidate?.clearedReview
+                        ? asset.candidate.clearedReview.ownerAcceptance ===
+                          'pending'
+                          ? 'Review cleared · Owner acceptance pending'
+                          : 'Review cleared · Owner acceptance unverified'
+                        : asset.candidate
+                          ? 'Candidate awaiting review'
+                          : 'Revision needed'}
+                </p>
+                <p>
+                  In-scene fit:{' '}
+                  {currentFit
+                    ? asset.fit?.verdict === 'pass'
+                      ? 'Verified'
+                      : asset.fit?.verdict === 'model-defect'
+                        ? 'Model defect'
+                        : 'Rehearsal issue'
+                    : asset.fit?.verdict === 'model-defect'
+                      ? 'Earlier rehearsal · Model correction needed'
+                      : asset.fit?.verdict === 'rehearsal-issue'
+                        ? 'Earlier rehearsal · Repeat fit check'
+                        : asset.fit
+                          ? 'Outdated · Repeat fit check'
+                          : 'Untested'}
+                </p>
+                <p>
+                  <ExternalRevision link={modelLink}>
+                    Open Mesh Foundry revision {model?.revisionId}
+                  </ExternalRevision>
+                  {!modelLink && (
+                    <>
+                      {' '}
+                      ({model?.libraryId} / {model?.assetId})
+                    </>
+                  )}
+                </p>
+                {action === 'candidate-review' && (
+                  <p>
+                    {asset.candidate?.clearedReview &&
+                    asset.candidate.clearedReview.ownerAcceptance === 'pending'
+                      ? 'Mesh Foundry → Acceptance → Accept this revision. Then verify acceptance in Scene Loom.'
+                      : asset.candidate?.clearedReview
+                        ? 'Verify owner acceptance for this revision in Mesh Foundry.'
+                        : 'Mesh Foundry → Copy developed model review prompt. If review finds a defect, use Copy developed model correction prompt.'}
+                  </p>
+                )}
+                {action === 'foundry' && (
+                  <p>
+                    Scene Loom → Copy Foundry revision request.{' '}
+                    {asset.candidate &&
+                      'For a reviewed defect, Mesh Foundry also offers Copy developed model correction prompt.'}
+                  </p>
+                )}
+                {action === 'fit' &&
+                  (!currentFit || asset.fit?.verdict !== 'pass') && (
+                    <p>
+                      Scene Loom → Copy rehearsal fit-check prompt for the
+                      accepted model and current rehearsal.
+                    </p>
+                  )}
+                {action === 'rehearsal-correction' && (
+                  <p>
+                    Scene Loom → Copy rehearsal correction request to fix
+                    placement or playback in Scene Rehearsal.
+                  </p>
+                )}
+                {action === 'capability-blocked' ? (
+                  <p>
+                    Scene Rehearsal capability blocker:{' '}
+                    {asset.fit?.capabilityBlocker}.{' '}
+                    <ExternalRevision link={head.link}>
+                      Open rehearsal {head.revisionId}
+                    </ExternalRevision>
+                  </p>
+                ) : !verified ? (
+                  copy(
+                    action,
+                    asset,
+                    action === 'candidate-review' &&
+                      asset.candidate?.clearedReview
+                      ? 'Copy Foundry acceptance verification prompt'
+                      : undefined,
+                  )
+                ) : data.expanded ? (
+                  copy('fit', asset, 'Copy rehearsal fit-check prompt', true)
+                ) : null}
+                {(action === 'fit' || action === 'rehearsal-correction') &&
+                  !verified && (
+                    <p>
+                      <ExternalRevision link={head.link}>
+                        Open rehearsal {head.revisionId}
+                      </ExternalRevision>
+                    </p>
+                  )}
+                {data.expanded &&
+                  copy('adopt-candidate', asset, undefined, true)}
+              </div>
+            );
+          })}
           {data.expanded &&
             copy(
               'rehearsal-handoff',
@@ -479,6 +730,30 @@ function RehearsalActions({ data }: { data: CardData }) {
           undefined,
           'Copy rehearsal continuation prompt',
         )
+      )}
+      {next && data.expanded && assets.length > 0 && (
+        <details className="rehearsal-earlier-assets">
+          <summary>Asset evidence awaiting rehearsal review</summary>
+          {assets.map((asset) => {
+            const model = asset.candidate?.model ?? asset.requirement.source;
+            return (
+              <p key={asset.requirement.id}>
+                <strong>{asset.requirement.name}:</strong> Earlier handoff
+                evidence ·{' '}
+                <ExternalRevision
+                  link={
+                    asset.candidate?.modelLink ??
+                    (!asset.candidate
+                      ? asset.requirement.sourceLink
+                      : undefined)
+                  }
+                >
+                  Open Mesh Foundry revision {model.revisionId}
+                </ExternalRevision>
+              </p>
+            );
+          })}
+        </details>
       )}
     </section>
   );

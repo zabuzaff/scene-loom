@@ -9,6 +9,9 @@ export const Model = z.strictObject({
   assetId: key,
   revisionId: key,
 });
+export const handoffLink = z
+  .url()
+  .refine((value) => /^https?:\/\//i.test(value), 'Use an HTTP or HTTPS link.');
 const Draft = z.strictObject({
   dataDir: note.regex(/^\//),
   port: z.number().int().min(1).max(65535),
@@ -19,6 +22,8 @@ const Requirement = z.strictObject({
   id: key,
   name: note,
   source: Model,
+  sourceLink: handoffLink.optional(),
+  optional: z.boolean().optional(),
   objects: z.array(key).min(1).max(100),
   measurements: z
     .array(
@@ -53,6 +58,13 @@ export const RehearsalEvent = z.discriminatedUnion('kind', [
     requirementId: key,
     model: Model,
     basedOn: Model,
+    modelLink: handoffLink.optional(),
+    clearedReview: z
+      .strictObject({
+        ownerAcceptance: z.enum(['pending', 'unverified']),
+        evidence: notes,
+      })
+      .optional(),
     adoptExisting: z.literal(true).optional(),
   }),
   event.extend({
@@ -69,6 +81,7 @@ export const RehearsalEvent = z.discriminatedUnion('kind', [
     rehearsalRevisionId: key,
     assembled: Draft.optional(),
     verdict: z.enum(['pass', 'model-defect', 'rehearsal-issue']),
+    capabilityBlocker: note.optional(),
     evidence: notes,
   }),
 ]);
@@ -117,7 +130,9 @@ export function rehearsalState(events: RehearsalEvent[] = []) {
       );
       if (!asset) continue;
       if (item.kind === 'candidate') {
-        asset.candidate = item;
+        asset.candidate = item.clearedReview
+          ? { ...item, modelLink: item.modelLink ?? asset.candidate?.modelLink }
+          : item;
         asset.acceptance = undefined;
         asset.fit = undefined;
       } else if (item.kind === 'candidate-review') {
@@ -203,6 +218,19 @@ export function workflowError(
   );
   if (!asset) return 'The asset requirement was replaced or does not exist.';
   if (item.kind === 'candidate') {
+    if (item.clearedReview) {
+      if (
+        !asset.candidate ||
+        asset.acceptance ||
+        item.adoptExisting ||
+        !sameModel(asset.candidate.model, item.model) ||
+        !sameModel(asset.candidate.model, item.basedOn) ||
+        asset.candidate.clearedReview?.ownerAcceptance ===
+          item.clearedReview.ownerAcceptance
+      )
+        return 'A cleared review must reassert the same pending candidate with a new owner acceptance state.';
+      return;
+    }
     const source = asset.candidate?.model ?? asset.requirement.source;
     if (
       !sameModel(source, item.basedOn) ||
@@ -225,6 +253,7 @@ export function workflowError(
     if (asset.acceptance)
       return 'This candidate already has a review. Publish a new revision to resolve a rejection.';
   } else if (
+    (item.capabilityBlocker && item.verdict !== 'rehearsal-issue') ||
     asset.acceptance?.verdict !== 'accepted' ||
     item.rehearsalRevisionId !== head.revisionId ||
     (item.assembled &&
@@ -240,15 +269,18 @@ export function workflowError(
     return 'Fit evidence must target the accepted model and current rehearsal; any assembly must be a new revision in the same library.';
 }
 
-export function assetNextAction(asset: Handoff) {
+export function assetNextAction(asset: Handoff, head?: { revisionId: string }) {
   if (
     !asset.candidate ||
     asset.acceptance?.verdict === 'needs-revision' ||
     asset.fit?.verdict === 'model-defect'
   )
     return 'foundry';
-  if (!asset.acceptance) return 'candidate-review';
-  if (asset.fit?.verdict === 'rehearsal-issue') return 'rehearsal-correction';
+  if (asset.acceptance?.verdict !== 'accepted') return 'candidate-review';
+  if (asset.fit?.verdict === 'rehearsal-issue' && fitIsCurrent(asset, head))
+    return asset.fit.capabilityBlocker
+      ? 'capability-blocked'
+      : 'rehearsal-correction';
   return 'fit';
 }
 

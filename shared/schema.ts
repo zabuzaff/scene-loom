@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Development, developmentOperations } from './development.js';
 import { RehearsalEvent } from './rehearsal.js';
 
 export const Id = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/);
@@ -146,6 +147,7 @@ export const Project = z.strictObject({
   vision: ProjectVision.optional(),
   meshFoundryEnabled: z.boolean().optional(),
   assetSuggestions: z.array(AssetSuggestion).optional(),
+  development: Development.optional(),
   scenes: z.array(Scene),
   connections: z.array(Connection),
   assets: z.record(Id, Asset),
@@ -164,6 +166,7 @@ const ConnectionPatch = Connection.omit({ id: true })
     'Provide at least one changed field',
   );
 export const Operation = z.discriminatedUnion('type', [
+  ...developmentOperations,
   z.strictObject({
     type: z.literal('rehearsal.record'),
     id: Id,

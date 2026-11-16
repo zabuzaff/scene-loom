@@ -15,6 +15,11 @@ import { randomUUID, createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import sharp, { type Metadata } from 'sharp';
 import { z } from 'zod';
+import {
+  planError,
+  sceneDevelopment,
+  sliceProgress,
+} from '../shared/development.js';
 import { workflowError } from '../shared/rehearsal.js';
 import { BaselineName } from '../shared/storyboard.js';
 import {
@@ -277,6 +282,7 @@ export class Store extends EventEmitter {
         scenes: source.scenes.map(
           ({ rehearsalEvents: _events, ...scene }) => scene,
         ),
+        development: undefined,
         rehearsalInputRevision: 0,
         contentRevision: 0,
         layoutRevision: 0,
@@ -489,6 +495,10 @@ export class Store extends EventEmitter {
         'DUPLICATE_ID',
         'Scene and connection IDs must be unique within their collection.',
       );
+    if (p.development) {
+      const problem = planError(p.development.plan, scenes);
+      if (problem) fail('INVALID_DEVELOPMENT_PLAN', problem);
+    }
     const suggestions = p.assetSuggestions ?? [];
     if (
       new Set(suggestions.map((suggestion) => suggestion.id)).size !==
@@ -626,9 +636,21 @@ export class Store extends EventEmitter {
         : undefined;
       if (priorVisualization && !priorVisualization.kind)
         priorVisualization.kind = 'visualization';
-      const workflowOnly = batch.operations.every(
+      const rehearsalOnly = batch.operations.every(
         (op) => op.type === 'rehearsal.record',
       );
+      const developmentOnly =
+        batch.operations.length === 1 &&
+        batch.operations[0].type.startsWith('development.');
+      const workflowOnly = rehearsalOnly || developmentOnly;
+      if (
+        !developmentOnly &&
+        batch.operations.some((op) => op.type.startsWith('development.'))
+      )
+        fail(
+          'MIXED_DEVELOPMENT_BATCH',
+          'Submit one development operation in its own batch.',
+        );
       if (
         !workflowOnly &&
         batch.operations.some((op) => op.type === 'rehearsal.record')
@@ -640,6 +662,142 @@ export class Store extends EventEmitter {
       const affected = new Set<string>();
       const updatedDrafts = new Set<string>();
       for (const [index, op] of batch.operations.entries()) {
+        if (op.type === 'development.plan.set') {
+          const previous = next.development;
+          if (previous && hash(previous.plan) === hash(op.plan))
+            fail(
+              'UNCHANGED_DEVELOPMENT_PLAN',
+              'The same plan is already mapped. Review the saved mapping.',
+            );
+          const active = previous?.plan.slices.find(
+            ({ id }) => sliceProgress(previous, id).claimId,
+          );
+          if (active)
+            fail(
+              'DEVELOPMENT_ACTIVE_CLAIM',
+              `Checkpoint the active slice "${active.name}" before replacing the plan.`,
+              409,
+            );
+          next.development = {
+            plan: op.plan,
+            planRevision: p.contentRevision + 1,
+            records: previous?.records ?? [],
+            priorPlans: previous
+              ? [
+                  ...(previous.priorPlans ?? []),
+                  {
+                    plan: previous.plan,
+                    planRevision: previous.planRevision,
+                    review: previous.review,
+                  },
+                ]
+              : [],
+          };
+          for (const slice of [
+            ...op.plan.slices,
+            ...(previous?.plan.slices ?? []),
+          ])
+            slice.sceneIds.forEach((id) => affected.add(id));
+          continue;
+        }
+        if (
+          op.type === 'development.plan.review' ||
+          op.type === 'development.start' ||
+          op.type === 'development.checkpoint'
+        ) {
+          const development = next.development;
+          if (!development || development.planRevision !== op.planRevision)
+            fail(
+              'STALE_DEVELOPMENT',
+              'The plan mapping changed. Read the current storyboard.',
+              409,
+            );
+          if (
+            op.type !== 'development.checkpoint' &&
+            !development.plan.repository
+          )
+            fail(
+              'DEVELOPMENT_REPOSITORY_REQUIRED',
+              'Remap the plan with its repository identity and review it again.',
+              409,
+            );
+          if (op.type === 'development.plan.review') {
+            if (development.review?.verdict === 'ready')
+              fail(
+                'STALE_DEVELOPMENT',
+                'This mapping is already reviewed. Map revised plan files before re-review.',
+                409,
+              );
+            development.review = op.review;
+            for (const slice of development.plan.slices)
+              slice.sceneIds.forEach((id) => affected.add(id));
+            continue;
+          }
+          if (development.review?.verdict !== 'ready')
+            fail(
+              'DEVELOPMENT_REVIEW_REQUIRED',
+              'An independent Ready review is required.',
+              409,
+            );
+          const slice = development.plan.slices.find(
+            ({ id }) => id === op.sliceId,
+          );
+          if (!slice)
+            fail('STALE_DEVELOPMENT', 'The slice is no longer mapped.', 409);
+          const current = sliceProgress(development, slice.id);
+          const { planRevision, sliceId, claimId } = op;
+          if (op.type === 'development.start') {
+            const target = sceneDevelopment(
+              development,
+              op.sceneId,
+              sliceId,
+            )?.next;
+            if (
+              target?.id !== sliceId ||
+              target.prerequisite ||
+              current.afterClaimId !== op.afterClaimId ||
+              current.claimId !== op.replacesClaimId ||
+              current.status === 'verified' ||
+              development.records.some((record) => record.claimId === claimId)
+            )
+              fail(
+                'DEVELOPMENT_NOT_READY',
+                'Use the current scene action. The slice is claimed, complete, or waiting for a prerequisite.',
+                409,
+              );
+            development.records.push({
+              kind: 'start',
+              planRevision,
+              sliceId,
+              claimId,
+            });
+          } else {
+            if (current.claimId !== claimId)
+              fail(
+                'STALE_DEVELOPMENT',
+                'This checkpoint does not own the current development claim.',
+                409,
+              );
+            if (
+              (op.checkpoint.status === 'verified' &&
+                !op.checkpoint.evidence.length) ||
+              (op.checkpoint.status === 'blocked' && !op.checkpoint.blocker)
+            )
+              fail(
+                'MISSING_DEVELOPMENT_EVIDENCE',
+                'Verified needs evidence; Blocked needs a blocker.',
+              );
+            development.records.push({
+              kind: 'checkpoint',
+              planRevision,
+              sliceId,
+              claimId,
+              checkpoint: op.checkpoint,
+            });
+          }
+          slice.sceneIds.forEach((id) => affected.add(id));
+          continue;
+        }
         if (op.type === 'rehearsal.record') {
           if (!p.meshFoundryEnabled)
             fail(
@@ -975,6 +1133,22 @@ export class Store extends EventEmitter {
         updatedAt: new Date().toISOString(),
       };
       restored.rehearsalInputRevision = restored.contentRevision;
+      if (restored.development) {
+        const development = restored.development;
+        restored.development = {
+          ...development,
+          planRevision: restored.contentRevision,
+          review: undefined,
+          priorPlans: [
+            ...(development.priorPlans ?? []),
+            {
+              plan: development.plan,
+              planRevision: development.planRevision,
+              review: development.review,
+            },
+          ],
+        };
+      }
       await this.validate(restored);
       if (p) await this.snapshot(p);
       else {
