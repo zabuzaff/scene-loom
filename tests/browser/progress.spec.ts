@@ -572,6 +572,24 @@ test('game card syncs, approves and independently reviews the exact placeholder 
       .click();
     expect(await clipboard()).toContain(revised);
     expect(await clipboard()).toContain(check);
+    await modal
+      .getByRole('button', { name: 'Copy in-game scene review prompt' })
+      .click();
+    const gameReview = await clipboard();
+    expect(gameReview).toContain(revised);
+    expect(gameReview).toContain('SS1, SS2');
+    expect(gameReview).toContain('still match the active handoff');
+    expect(gameReview).toContain(
+      'stop and ask for a fresh in-game scene review prompt',
+    );
+    expect(gameReview).toContain(
+      'In both the report and the paste-ready correction prompt',
+    );
+    expect(gameReview).toContain('approved, proposed, or unverified');
+    expect(gameReview).toContain('original capture');
+    expect(gameReview).toContain('paste-ready correction prompt');
+    expect(gameReview).toContain('3D prototype name for scale reference:');
+    expect(gameReview).not.toContain('Record one rehearsal.record event');
     await page.screenshot({ path: 'test-results/progress-game-expanded.png' });
     await page.setViewportSize({ width: 390, height: 650 });
     await expect(

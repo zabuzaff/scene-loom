@@ -17,11 +17,13 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUpRight, PencilLine, ChevronDown, Shapes, X } from 'lucide-react';
 import type { ProjectData, SceneData } from '../shared/schema';
-import { api, orchestrationActions, RequestError } from './api';
 import {
-  orchestrationState,
-  type OrchestrationAction,
-} from '../shared/orchestration';
+  api,
+  orchestrationActions,
+  RequestError,
+  type OrchestrationCopyAction,
+} from './api';
+import { orchestrationState } from '../shared/orchestration';
 import type { sceneDevelopment } from '../shared/development';
 import {
   DevelopmentAction,
@@ -48,7 +50,7 @@ export type CardData = {
   copy: (
     id: string,
     action:
-      'development' | 'continue' | 'edit' | 'assets' | OrchestrationAction,
+      'development' | 'continue' | 'edit' | 'assets' | OrchestrationCopyAction,
     requirementId?: string,
     sliceId?: string,
     report?: (message: string) => void,
@@ -624,6 +626,22 @@ function RehearsalActions({ data }: { data: CardData }) {
             <Shapes size={15} aria-hidden="true" /> {label.label}
           </button>
           {expanded && <p>{label.help}</p>}
+        </>
+      )}
+      {next === 'handoff' && (
+        <>
+          <button
+            type="button"
+            className="studio-copy-action nodrag"
+            onClick={(event) => {
+              event.stopPropagation();
+              data.copy(scene.id, 'review-game');
+            }}
+          >
+            <Shapes size={15} aria-hidden="true" />{' '}
+            {orchestrationActions['review-game'].label}
+          </button>
+          {expanded && <p>{orchestrationActions['review-game'].help}</p>}
         </>
       )}
       {expanded && sync && (

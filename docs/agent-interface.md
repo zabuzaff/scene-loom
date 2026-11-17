@@ -253,6 +253,8 @@ For an owner-authorized legacy transition, use `legacyReset: true` on the first 
 
 The game handoff reads the approved plan and immutable draft together with all original references, accepted Foundry IDs and pending runtime checks. Use game implementation for model placement, collision, selection and final animation. If an external publication succeeded but Loom writeback conflicted, recover the exact digest from the plan head and verify its same-plan ancestry to the last recorded digest (or the plan root) before writing to Loom again.
 
+**Copy in-game scene review prompt** is available alongside the game handoff after draft approval. Once a game build is available, paste it into a fresh reviewer chat in the game workspace and append the prototype name for the scale reference. The reviewer measures the loaded reference after game transforms and returns a verdict, numbered annotated and original screenshots, measured findings and a paste-ready correction prompt in chat. Placement fixes go to the game builder. Geometry findings can supply instructions for a targeted Foundry revision.
+
 ## Legacy rehearsal compatibility
 
 Earlier brief, review, candidate and fit records remain readable. The legacy writeback contract below applies to targets that have yet to transition. Current scene cards use the orchestration workflow above.

@@ -1,5 +1,4 @@
 import { developmentTargetKey, sceneDevelopment } from '../shared/development';
-import type { OrchestrationAction } from '../shared/orchestration';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
@@ -35,6 +34,7 @@ import {
   orchestrationActions,
   orchestrationPrompt,
   type AgentInfo,
+  type OrchestrationCopyAction,
 } from './api';
 import { SceneCard, type SceneNode } from './SceneCard';
 import { arrangeScenes } from './arrange';
@@ -188,7 +188,11 @@ function CanvasInner({
     async (
       id: string,
       action:
-        'development' | 'continue' | 'edit' | 'assets' | OrchestrationAction,
+        | 'development'
+        | 'continue'
+        | 'edit'
+        | 'assets'
+        | OrchestrationCopyAction,
       targetKey?: string,
       sliceId?: string,
       report = notify,

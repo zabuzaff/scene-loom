@@ -267,3 +267,5 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Review follow-up added same-plan ancestry recovery after missed publication writebacks, a live Foundry approval check before draft approval and game handoff, routing from draft review back to planning, and duplicate-name protection for unpinned selections.
 
 - At Cozy 3D content revision 21, saved the 17 verified Foundry pins as the explicit office asset selection. The Practice Account ledger originated in the legacy rehearsal brief, and the combined researcher rig was replaced by the four separate character assets. The asset selection and sync used the targeted no-snapshot path. Live readback advanced the card to planning and confirmed the backup list was unchanged. No plan or draft was created.
+
+- Added **Copy in-game scene review prompt** alongside the approved game handoff. It carries the exact plan and pins, accepts an owner-supplied prototype name for scale, and requests numbered screenshot evidence and a builder correction prompt. Build, lint and the Chrome clipboard workflow passed.
