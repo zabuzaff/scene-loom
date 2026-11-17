@@ -583,12 +583,25 @@ test('game card syncs, approves and independently reviews the exact placeholder 
       'stop and ask for a fresh in-game scene review prompt',
     );
     expect(gameReview).toContain(
-      'In both the report and the paste-ready correction prompt',
+      'In both the report and the paste-ready correction prompt, record the exact running build ID and reviewed route.',
+    );
+    expect(gameReview).toContain('orbit, pan, zoom, or focus on selection');
+    expect(gameReview).toContain('Report any inspection limits.');
+    expect(gameReview).toContain(
+      'If the field is blank or the reference cannot be resolved, continue the review and flag scale judgments that need a reference.',
+    );
+    expect(gameReview).toContain(
+      'Record the measured size separately from any owner-approved baseline.',
+    );
+    expect(gameReview).toContain(
+      'Mark behavior that cannot be exercised as pending',
     );
     expect(gameReview).toContain('approved, proposed, or unverified');
     expect(gameReview).toContain('original capture');
     expect(gameReview).toContain('paste-ready correction prompt');
-    expect(gameReview).toContain('3D prototype name for scale reference:');
+    expect(gameReview.trimEnd()).toMatch(
+      /3D prototype name for scale reference:$/,
+    );
     expect(gameReview).not.toContain('Record one rehearsal.record event');
     await page.screenshot({ path: 'test-results/progress-game-expanded.png' });
     await page.setViewportSize({ width: 390, height: 650 });
