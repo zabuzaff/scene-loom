@@ -1175,6 +1175,7 @@ kbd {
 
 .scene-rehearsal-actions {
   padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -1192,27 +1193,6 @@ kbd {
 .scene-rehearsal-actions label {
   display: grid;
   gap: 3px;
-}
-.scene-rehearsal-actions select {
-  width: 100%;
-  color: var(--text);
-  background: var(--surface-hover);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 4px;
-  font: inherit;
-}
-
-.scene-rehearsal-actions {
-  border-bottom: 1px solid var(--line);
-}
-.scene-rehearsal-actions button.rehearsal-secondary {
-  background: transparent;
-  color: var(--soft);
-}
-.scene-rehearsal-actions button.rehearsal-secondary:hover {
-  background: var(--surface-hover);
-  color: var(--text);
 }
 .scene-rehearsal-brief summary {
   cursor: pointer;
@@ -1280,13 +1260,6 @@ kbd {
   text-underline-offset: 2px;
 }
 
-.rehearsal-asset-row {
-  padding-block: 9px;
-}
-.rehearsal-asset-row + .rehearsal-asset-row {
-  border-top: 1px solid var(--line);
-}
-
 .scene-detail .game-resume {
   margin-top: 4px;
 }
@@ -1297,10 +1270,6 @@ kbd {
 .game-resume-result + p {
   margin-top: 4px;
 }
-.rehearsal-earlier-assets {
-  margin-top: 8px;
-}
-
 .scene-inline-action {
   display: inline;
   padding: 0;
@@ -1449,27 +1418,11 @@ kbd {
   margin-top: 18px;
   padding: 12px 0;
 }
-.scene-production-dialog .scene-progress-action button,
-.scene-production-dialog .rehearsal-asset-row button {
-  width: auto;
-  max-width: 100%;
-  margin-right: 8px;
-}
-.scene-production-dialog .rehearsal-asset-row {
-  padding: 14px 0;
-}
-.scene-production-dialog .rehearsal-asset-row > strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 14px;
-}
 @media (max-width: 560px) {
   .scene-production-dialog .game-progress {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-  .scene-production-dialog .game-progress > div + div {
-    border-top: 1px solid var(--line);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 12px;
+    margin-block: 10px;
   }
 }
 
@@ -1491,6 +1444,7 @@ kbd {
 }
 .scene-production-dialog .studio-copy-action:hover {
   background: var(--accent-hover);
+  color: var(--on-accent);
   transform: translateY(-1px);
 }
 .scene-production-dialog .studio-copy-action:active {
@@ -1532,8 +1486,10 @@ kbd {
 .scene-production-dialog .game-progress > div {
   padding-block: 15px;
 }
-.scene-production-dialog .scene-progress-action button,
-.scene-production-dialog .rehearsal-asset-row button {
+.scene-production-dialog .scene-progress-action button {
+  width: auto;
+  max-width: 100%;
+  margin-right: 8px;
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -1542,8 +1498,7 @@ kbd {
     background 160ms ease,
     border-color 160ms ease;
 }
-.scene-production-dialog .scene-progress-action button:hover,
-.scene-production-dialog .rehearsal-asset-row button:hover {
+.scene-production-dialog .scene-progress-action button:hover {
   border-color: var(--accent);
   background: var(--surface-hover);
 }
@@ -1555,4 +1510,51 @@ kbd {
 .scene-production-dialog summary:hover,
 .scene-production-dialog details[open] > summary {
   color: var(--accent);
+}
+
+.orchestration-manifest {
+  width: 100%;
+  margin-top: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.orchestration-manifest li > p {
+  margin-block: 0.15rem 0.55rem;
+}
+
+.orchestration-manifest textarea {
+  display: block;
+  width: 100%;
+  min-height: 5rem;
+  margin-block: 0.35rem;
+  padding: 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 0.4rem;
+}
+
+.orchestration-decisions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.orchestration-evidence {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.scene-production-dialog .scene-rehearsal-actions > .studio-copy-action {
+  justify-content: flex-start;
+  width: auto;
+  max-width: 100%;
+  margin-inline: 0;
+  text-align: left;
+}
+
+.scene-production-dialog .orchestration-decisions > .studio-copy-action {
+  width: auto;
+  margin-inline: 0;
 }

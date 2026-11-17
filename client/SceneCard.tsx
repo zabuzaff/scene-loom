@@ -17,27 +17,23 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUpRight, PencilLine, ChevronDown, Shapes, X } from 'lucide-react';
 import type { ProjectData, SceneData } from '../shared/schema';
+import { api, orchestrationActions, RequestError } from './api';
 import {
-  assetNextAction,
-  fitIsCurrent,
-  rehearsalState,
-  sceneNextAction,
-  type Handoff,
-} from '../shared/rehearsal';
-import type { AssetPromptAction } from './api';
+  orchestrationState,
+  type OrchestrationAction,
+} from '../shared/orchestration';
 import type { sceneDevelopment } from '../shared/development';
 import {
   DevelopmentAction,
   DevelopmentDetails,
   ExternalRevision,
   GameResume,
-  isRequiredAsset,
-  requiredRehearsalAssets,
 } from './SceneProgress';
 
 export type CardData = {
   scene: SceneData;
   projectId: string;
+  contentRevision: number;
   number: number;
   expanded: boolean;
   recent: boolean;
@@ -52,14 +48,7 @@ export type CardData = {
   copy: (
     id: string,
     action:
-      | 'development'
-      | 'continue'
-      | 'edit'
-      | 'assets'
-      | 'rehearsal'
-      | 'rehearsal-review'
-      | 'rehearsal-handoff'
-      | AssetPromptAction,
+      'development' | 'continue' | 'edit' | 'assets' | OrchestrationAction,
     requirementId?: string,
     sliceId?: string,
     report?: (message: string) => void,
@@ -128,7 +117,7 @@ export const SceneCard = memo(function SceneCard({
       )}
       {rehearsalBrief && (
         <section className="scene-rehearsal-brief">
-          <h3>Draft rehearsal brief</h3>
+          <h3>Scene asset selections and earlier brief</h3>
           <p>{rehearsalBrief.layout}</p>
           <h4>Scenarios</h4>
           <ul>
@@ -166,17 +155,24 @@ export const SceneCard = memo(function SceneCard({
           {[...data.scene.rehearsalEvents].reverse().map((event) => (
             <details key={event.eventId} className="nodrag">
               <summary>
-                {event.kind === 'review'
-                  ? `Brief review: ${event.blockout}`
-                  : event.kind === 'draft'
-                    ? `Rehearsal: ${event.draft.revisionId}`
-                    : event.kind === 'candidate'
-                      ? `Candidate${event.clearedReview ? ' review cleared' : ''}: ${event.model.revisionId}`
-                      : event.kind === 'candidate-review'
-                        ? `Foundry review: ${event.verdict}`
-                        : `Fit check: ${event.verdict.replace('-', ' ')}`}
+                {event.kind === 'orchestration'
+                  ? event.record.stage.replaceAll('-', ' ')
+                  : event.kind === 'review'
+                    ? `Brief review: ${event.blockout}`
+                    : event.kind === 'draft'
+                      ? `Rehearsal: ${event.draft.revisionId}`
+                      : event.kind === 'candidate'
+                        ? `Candidate${event.clearedReview ? ' review cleared' : ''}: ${event.model.revisionId}`
+                        : event.kind === 'candidate-review'
+                          ? `Foundry review: ${event.ownerOverride ? 'Owner override' : event.verdict}`
+                          : `Fit check: ${event.verdict.replace('-', ' ')}`}
               </summary>
               <p>Record: {event.eventId}</p>
+              {event.kind === 'orchestration' && (
+                <pre className="orchestration-evidence">
+                  {JSON.stringify(event.record, null, 2)}
+                </pre>
+              )}
               {event.kind === 'review' && (
                 <p>
                   {event.scope} · Model import: {event.imports}
@@ -184,7 +180,11 @@ export const SceneCard = memo(function SceneCard({
               )}
               {event.kind === 'draft' && (
                 <>
-                  <p>Rehearsal reference: {event.draft.link}</p>
+                  <p>
+                    <ExternalRevision link={event.draft.link}>
+                      Open historical rehearsal {event.draft.revisionId}
+                    </ExternalRevision>
+                  </p>
                   {event.requirements.map((requirement) => (
                     <div key={requirement.id}>
                       <h4>{requirement.name}</h4>
@@ -228,6 +228,14 @@ export const SceneCard = memo(function SceneCard({
               )}
               {event.kind === 'candidate' && event.clearedReview && (
                 <p>{event.clearedReview.evidence.join('; ')}</p>
+              )}
+              {event.kind === 'candidate-review' && event.ownerOverride && (
+                <>
+                  <p>
+                    Overrides rejection {event.ownerOverride.rejectionEventId}
+                  </p>
+                  <p>{event.ownerOverride.reason}</p>
+                </>
               )}
               {'evidence' in event && (
                 <ul>
@@ -515,246 +523,261 @@ function SceneDialog({
   );
 }
 
-const actionLabels = {
-  rehearsal: 'Copy rehearsal prep prompt',
-  'rehearsal-review': 'Copy rehearsal review prompt',
-  'rehearsal-handoff': 'Copy rehearsal handoff prompt',
-  foundry: 'Copy Foundry revision request',
-  'adopt-candidate': 'Copy existing-model review prompt',
-  'candidate-review': 'Copy Foundry candidate review prompt',
-  fit: 'Copy rehearsal fit-check prompt',
-  'rehearsal-correction': 'Copy rehearsal correction request',
-} as const;
-
 function RehearsalActions({ data }: { data: CardData }) {
-  const { id, title, rehearsalBrief, rehearsalEvents } = data.scene;
-  const state = rehearsalState(rehearsalEvents);
-  const { review, head, assets } = state;
-  const next = sceneNextAction(
-    !!rehearsalBrief,
-    data.rehearsalInputRevision,
-    state,
-  );
-  const copy = (
-    action: keyof typeof actionLabels,
-    asset?: Handoff,
-    text: string = actionLabels[action],
-    secondary = false,
-  ) => (
-    <button
-      className={secondary ? 'rehearsal-secondary' : undefined}
-      aria-label={`${text} for ${asset?.requirement.name ?? title}`}
-      onClick={(event) => {
-        event.stopPropagation();
-        data.copy(id, action, asset?.requirement.id);
-      }}
-    >
-      {text}
-    </button>
-  );
-  const { required, unmeasured } = requiredRehearsalAssets(data.scene, assets);
-  const compact =
-    !data.expanded &&
-    (data.production
-      ? assets.length > 0 || unmeasured.length > 0
-      : assets.length > 1);
-  const openChecks =
-    required.filter(
-      (asset) => !(fitIsCurrent(asset, head) && asset.fit?.verdict === 'pass'),
-    ).length + unmeasured.length;
+  const {
+    scene,
+    rehearsalInputRevision,
+    projectId,
+    contentRevision,
+    expanded,
+  } = data;
+  const { sync, plan, decision, draft, review, next, current } =
+    orchestrationState(scene.rehearsalEvents, rehearsalInputRevision);
+  const [feedback, setFeedback] = useState('');
+  const [status, setStatus] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [staleFoundryPlanId, setStaleFoundryPlanId] = useState<string>();
+  const unresolved = sync?.entries.filter((entry) => !entry.source) ?? [];
+  const missing = unresolved.filter((entry) => entry.required);
+  const recheck =
+    next === 'decide' && plan?.eventId && staleFoundryPlanId === plan.eventId;
+  const action =
+    next === 'resolve' || recheck
+      ? 'sync'
+      : next === 'decide'
+        ? undefined
+        : next;
+  const label = action && orchestrationActions[action];
+
+  async function decide(verdict: 'approved' | 'changes-requested') {
+    if (!plan || saving) return;
+    setSaving(true);
+    setStatus('');
+    try {
+      await api(`projects/${projectId}/plan-decision`, 'POST', {
+        schemaVersion: 1,
+        projectId,
+        expectedContentRevision: contentRevision,
+        requestId: crypto.randomUUID(),
+        operations: [
+          {
+            type: 'rehearsal.record',
+            id: scene.id,
+            afterEventId: scene.rehearsalEvents?.at(-1)?.eventId ?? null,
+            event: {
+              kind: 'orchestration',
+              eventId: crypto.randomUUID(),
+              record: {
+                stage: 'decision',
+                planId: plan.eventId,
+                verdict,
+                ...(feedback.trim() ? { feedback: feedback.trim() } : {}),
+              },
+            },
+          },
+        ],
+      });
+      setStatus(
+        verdict === 'approved' ? 'Plan approved.' : 'Plan changes requested.',
+      );
+      setFeedback('');
+    } catch (error) {
+      if (
+        error instanceof RequestError &&
+        error.detail.code === 'STALE_FOUNDRY'
+      )
+        setStaleFoundryPlanId(plan.eventId);
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : 'Could not save your decision.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <section
-      className="scene-rehearsal-actions scene-asset-action nodrag"
-      aria-label="Rehearsal next action"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <p>
-        {!rehearsalBrief
-          ? 'Rehearsal · Prepare brief'
-          : next === 'rehearsal-review'
-            ? review
-              ? 'Review outdated · Repeat independent review'
-              : 'Brief saved · Independent review'
-            : next === 'rehearsal'
-              ? 'Blockout blocked · Revise brief'
-              : next
-                ? 'Review ready · Stage rehearsal'
-                : 'Review ready · Rehearsal saved'}
-      </p>
-      {next ? (
-        copy(
-          next,
-          undefined,
-          next === 'rehearsal' && rehearsalBrief
-            ? 'Copy rehearsal brief correction'
-            : undefined,
-        )
-      ) : compact ? (
+    <section className="scene-rehearsal-actions scene-asset-action nodrag">
+      {expanded && <h3>Scene rehearsal</h3>}
+      {next === 'resolve' && (
         <p>
-          {openChecks} required asset fit{' '}
-          {openChecks === 1 ? 'check' : 'checks'} open · Open scene for actions
+          Waiting for {missing.map((entry) => entry.name).join(', ')}. Resolve
+          the required selection before syncing again.
         </p>
-      ) : assets.length && head ? (
+      )}
+      {next === 'decide' && !expanded && <p>Plan awaiting your decision</p>}
+      {label && action && (
         <>
-          {assets.map((asset) => {
-            const currentFit = fitIsCurrent(asset, head);
-            const action = assetNextAction(asset, head);
-            const model = asset.candidate?.model ?? asset.requirement.source;
-            const modelLink = asset.candidate
-              ? asset.candidate.modelLink
-              : asset.requirement.sourceLink;
-            const verified = currentFit && asset.fit?.verdict === 'pass';
-            return (
-              <div className="rehearsal-asset-row" key={asset.requirement.id}>
-                <strong>
-                  {asset.requirement.name}
-                  {!isRequiredAsset(data.scene, asset.requirement) &&
-                    ' · Optional'}
-                </strong>
-                <p>
-                  Foundry:{' '}
-                  {asset.acceptance?.verdict === 'accepted'
-                    ? 'Accepted'
-                    : asset.acceptance?.verdict === 'needs-revision'
-                      ? 'Needs revision'
-                      : asset.candidate?.clearedReview
-                        ? asset.candidate.clearedReview.ownerAcceptance ===
-                          'pending'
-                          ? 'Review cleared · Owner acceptance pending'
-                          : 'Review cleared · Owner acceptance unverified'
-                        : asset.candidate
-                          ? 'Candidate awaiting review'
-                          : 'Revision needed'}
-                </p>
-                <p>
-                  In-scene fit:{' '}
-                  {currentFit
-                    ? asset.fit?.verdict === 'pass'
-                      ? 'Verified'
-                      : asset.fit?.verdict === 'model-defect'
-                        ? 'Model defect'
-                        : 'Rehearsal issue'
-                    : asset.fit?.verdict === 'model-defect'
-                      ? 'Earlier rehearsal · Model correction needed'
-                      : asset.fit?.verdict === 'rehearsal-issue'
-                        ? 'Earlier rehearsal · Repeat fit check'
-                        : asset.fit
-                          ? 'Outdated · Repeat fit check'
-                          : 'Untested'}
-                </p>
-                <p>
-                  <ExternalRevision link={modelLink}>
-                    Open Mesh Foundry revision {model?.revisionId}
-                  </ExternalRevision>
-                  {!modelLink && (
-                    <>
-                      {' '}
-                      ({model?.libraryId} / {model?.assetId})
-                    </>
-                  )}
-                </p>
-                {action === 'candidate-review' && (
-                  <p>
-                    {asset.candidate?.clearedReview &&
-                    asset.candidate.clearedReview.ownerAcceptance === 'pending'
-                      ? 'Mesh Foundry → Acceptance → Accept this revision. Then verify acceptance in Scene Loom.'
-                      : asset.candidate?.clearedReview
-                        ? 'Verify owner acceptance for this revision in Mesh Foundry.'
-                        : 'Mesh Foundry → Copy developed model review prompt. If review finds a defect, use Copy developed model correction prompt.'}
-                  </p>
-                )}
-                {action === 'foundry' && (
-                  <p>
-                    Scene Loom → Copy Foundry revision request.{' '}
-                    {asset.candidate &&
-                      'For a reviewed defect, Mesh Foundry also offers Copy developed model correction prompt.'}
-                  </p>
-                )}
-                {action === 'fit' &&
-                  (!currentFit || asset.fit?.verdict !== 'pass') && (
-                    <p>
-                      Scene Loom → Copy rehearsal fit-check prompt for the
-                      accepted model and current rehearsal.
-                    </p>
-                  )}
-                {action === 'rehearsal-correction' && (
-                  <p>
-                    Scene Loom → Copy rehearsal correction request to fix
-                    placement or playback in Scene Rehearsal.
-                  </p>
-                )}
-                {action === 'capability-blocked' ? (
-                  <p>
-                    Scene Rehearsal capability blocker:{' '}
-                    {asset.fit?.capabilityBlocker}.{' '}
-                    <ExternalRevision link={head.link}>
-                      Open rehearsal {head.revisionId}
-                    </ExternalRevision>
-                  </p>
-                ) : !verified ? (
-                  copy(
-                    action,
-                    asset,
-                    action === 'candidate-review' &&
-                      asset.candidate?.clearedReview
-                      ? 'Copy Foundry acceptance verification prompt'
-                      : undefined,
-                  )
-                ) : data.expanded ? (
-                  copy('fit', asset, 'Copy rehearsal fit-check prompt', true)
-                ) : null}
-                {(action === 'fit' || action === 'rehearsal-correction') &&
-                  !verified && (
-                    <p>
-                      <ExternalRevision link={head.link}>
-                        Open rehearsal {head.revisionId}
-                      </ExternalRevision>
-                    </p>
-                  )}
-                {data.expanded &&
-                  copy('adopt-candidate', asset, undefined, true)}
-              </div>
-            );
-          })}
-          {data.expanded &&
-            copy(
-              'rehearsal-handoff',
-              undefined,
-              'Copy rehearsal continuation prompt',
-              true,
-            )}
+          <button
+            type="button"
+            className="studio-copy-action nodrag"
+            onClick={(event) => {
+              event.stopPropagation();
+              data.copy(
+                scene.id,
+                action,
+                recheck ? staleFoundryPlanId : undefined,
+              );
+            }}
+          >
+            <Shapes size={15} aria-hidden="true" /> {label.label}
+          </button>
+          {expanded && <p>{label.help}</p>}
         </>
-      ) : (
-        copy(
-          'rehearsal-handoff',
-          undefined,
-          'Copy rehearsal continuation prompt',
-        )
       )}
-      {next && data.expanded && assets.length > 0 && (
-        <details className="rehearsal-earlier-assets">
-          <summary>Asset evidence awaiting rehearsal review</summary>
-          {assets.map((asset) => {
-            const model = asset.candidate?.model ?? asset.requirement.source;
-            return (
-              <p key={asset.requirement.id}>
-                <strong>{asset.requirement.name}:</strong> Earlier handoff
-                evidence ·{' '}
-                <ExternalRevision
-                  link={
-                    asset.candidate?.modelLink ??
-                    (!asset.candidate
-                      ? asset.requirement.sourceLink
-                      : undefined)
-                  }
-                >
-                  Open Mesh Foundry revision {model.revisionId}
-                </ExternalRevision>
+      {expanded && sync && (
+        <section className="orchestration-manifest">
+          <h4>
+            {current
+              ? 'Accepted-model manifest'
+              : 'Earlier accepted-model manifest'}
+          </h4>
+          <p>
+            Foundry library <code>{sync.libraryId}</code>
+          </p>
+          {sync.entries.length ? (
+            <ul>
+              {[
+                ...unresolved,
+                ...sync.entries.filter((entry) => entry.source),
+              ].map((entry, index) => (
+                <li key={index}>
+                  <strong>{entry.name}</strong>
+                  {entry.required ? '' : ' · Optional'}
+                  {entry.source ? (
+                    <p>
+                      <code>
+                        {entry.source.assetId} / {entry.source.revisionId}
+                      </code>
+                    </p>
+                  ) : (
+                    <p>{entry.issue}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No assets selected for this scene.</p>
+          )}
+        </section>
+      )}
+      {expanded && current && plan && (
+        <section className="orchestration-manifest" key={plan.eventId}>
+          <h4>
+            {decision?.verdict === 'approved'
+              ? 'Approved orchestration plan'
+              : 'Proposed orchestration plan'}
+          </h4>
+          <p>{plan.plan.intent}</p>
+          {plan.plan.pieces.map((piece) => (
+            <details key={piece.id}>
+              <summary>{piece.label}</summary>
+              <p>
+                {piece.id}
+                {piece.group && ` · Group ${piece.group}`}
               </p>
-            );
-          })}
-        </details>
+              <p>
+                Center ({piece.position.join(', ')}) m · Size (
+                {piece.size.join(', ')}) m
+              </p>
+              <p>
+                Scale ({piece.scale.join(', ')}) · Rotation (
+                {piece.rotation.join(', ')}) rad XYZ
+              </p>
+              <p>{piece.behavior}</p>
+              {piece.source && (
+                <p>
+                  <code>
+                    {piece.source.assetId} / {piece.source.revisionId}
+                  </code>
+                </p>
+              )}
+            </details>
+          ))}
+          <h5>Camera or traversal</h5>
+          <ul>
+            {plan.plan.cameraOrTraversal.map((cue, index) => (
+              <li key={index}>{cue}</li>
+            ))}
+          </ul>
+          <h5>Checks</h5>
+          <ul>
+            {plan.plan.checks.map((check, index) => (
+              <li key={index}>{check}</li>
+            ))}
+          </ul>
+          {plan.plan.references.length > 0 && (
+            <>
+              <h5>References</h5>
+              <ul>
+                {plan.plan.references.map((reference, index) => (
+                  <li key={index}>{reference}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {decision?.feedback && <p>Requested changes · {decision.feedback}</p>}
+          {next === 'decide' && (
+            <>
+              <label>
+                Changes to request
+                <textarea
+                  value={feedback}
+                  maxLength={8000}
+                  onChange={(event) => setFeedback(event.target.value)}
+                />
+              </label>
+              <div className="orchestration-decisions">
+                <button
+                  type="button"
+                  className="studio-copy-action"
+                  disabled={saving}
+                  onClick={() => void decide('approved')}
+                >
+                  Approve plan
+                </button>
+                <button
+                  type="button"
+                  className="studio-copy-action"
+                  disabled={saving || !feedback.trim()}
+                  onClick={() => void decide('changes-requested')}
+                >
+                  Request changes
+                </button>
+              </div>
+            </>
+          )}
+        </section>
       )}
+      {expanded && current && draft && (
+        <section className="orchestration-manifest">
+          <h4>Placeholder draft</h4>
+          <ExternalRevision
+            link={`http://127.0.0.1:${draft.port}/revision/${draft.revisionId}/${draft.scenarioId}`}
+          >
+            Open draft {draft.revisionId}
+          </ExternalRevision>
+          {review && (
+            <>
+              <p>
+                {review.verdict === 'approved'
+                  ? 'Draft approved'
+                  : review.verdict === 'plan-changes-requested'
+                    ? 'Plan changes requested after draft review'
+                    : 'Draft changes requested'}{' '}
+                · {review.reviewer}
+              </p>
+              <ul>
+                {review.findings.map((finding, index) => (
+                  <li key={index}>{finding}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+      {expanded && status && <p role="status">{status}</p>}
     </section>
   );
 }

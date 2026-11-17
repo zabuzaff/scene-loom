@@ -45,6 +45,16 @@ export const Scene = z.strictObject({
   notes: Text,
   mainAssetId: Id.nullable().optional(),
   supportingAssetIds: z.array(Id).max(30),
+  selectedAssets: z
+    .array(
+      z.strictObject({
+        name: z.string().trim().min(1).max(200),
+        required: z.boolean(),
+        source: RehearsalBrief.shape.assets.element.shape.source,
+      }),
+    )
+    .max(100)
+    .optional(),
   rehearsalBrief: RehearsalBrief.nullable().optional(),
   rehearsalEvents: z.array(RehearsalEvent).optional(),
 });
@@ -219,6 +229,7 @@ export const Batch = z.strictObject({
   projectId: Id,
   requestId: Id,
   expectedContentRevision: z.number().int().nonnegative(),
+  skipSnapshot: z.literal(true).optional(),
   operations: z.array(Operation).min(1).max(1000),
 });
 export const ProjectSettings = z.strictObject({

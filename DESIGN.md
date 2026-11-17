@@ -57,6 +57,6 @@ Mode: Read within the studio's Operate workspace. The project-title area exposes
 
 With Mesh Foundry enabled, scene cards expose a full-width **Copy asset-generation prompt** action beneath Continue/Edit, keeping all three actions readable at the existing card width. It uses the same clipboard feedback and prevents card activation/dragging. Copying works in both collapsed and expanded states; it preserves expansion and layout.
 
-The rehearsal next action sits below the scene heading, outside the scrolling details, in both card states. One primary copy action follows the current stage. Per-asset actions share that area, with separate text for Foundry acceptance and in-scene fit. The expanded card retains the brief and revision evidence and offers rehearsal continuation when the draft needs another pass.
+The rehearsal area shows one current copy action and explains where the copied prompt goes and what comes back. The expanded card shows verified Foundry IDs and gaps, per-piece plan details, owner decisions, and the exact Rehearsal link and findings. Plan approval and change requests use distinct explicit controls. Historical evidence stays expandable below the active workflow.
 
 Game and rehearsal scenes open their production details in a modal above the canvas. The canvas card stays compact. The modal gives progress and next actions space at normal screen scale and scrolls independently of the storyboard.

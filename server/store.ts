@@ -1,3 +1,4 @@
+import { validateOrchestration } from './orchestration.js';
 import {
   copyFile,
   mkdtemp,
@@ -20,6 +21,7 @@ import {
   sceneDevelopment,
   sliceProgress,
 } from '../shared/development.js';
+import { verifyFoundryAcceptance } from './foundry.js';
 import { workflowError } from '../shared/rehearsal.js';
 import { BaselineName } from '../shared/storyboard.js';
 import {
@@ -609,6 +611,23 @@ export class Store extends EventEmitter {
   async apply(input: unknown, dryRun = false): Promise<MutationResult> {
     return this.serial(async () => {
       const batch = Batch.parse(input);
+      if (batch.skipSnapshot) {
+        const [operation] = batch.operations;
+        const selection =
+          operation.type === 'scene.patch' &&
+          operation.changes.selectedAssets !== undefined &&
+          Object.keys(operation.changes).length === 1;
+        const sync =
+          operation.type === 'rehearsal.record' &&
+          operation.event.kind === 'orchestration' &&
+          operation.event.record.stage === 'sync';
+        if (batch.operations.length !== 1 || (!selection && !sync))
+          fail(
+            'VALIDATION_ERROR',
+            'Skipping the snapshot requires a single asset selection or orchestration sync.',
+            400,
+          );
+      }
       const p = await this.load(batch.projectId);
       const digest = hash(batch);
       const old = p.receipts.find((x) => x.id === batch.requestId);
@@ -814,6 +833,17 @@ export class Store extends EventEmitter {
               'The scene handoff changed. Reread before recording evidence.',
               409,
             );
+          if (op.event.kind === 'orchestration') {
+            if (batch.operations.length !== 1)
+              fail(
+                'MIXED_REHEARSAL_BATCH',
+                'Record one orchestration event per batch.',
+              );
+            await validateOrchestration(p, scene, op.event);
+            events.push(op.event);
+            affected.add(op.id);
+            continue;
+          }
           const error = workflowError(
             events,
             op.event,
@@ -821,6 +851,23 @@ export class Store extends EventEmitter {
             !!scene.rehearsalBrief,
           );
           if (error) fail('STALE_REHEARSAL', error, 409);
+          if (op.event.kind === 'candidate-review' && op.event.ownerOverride) {
+            const accepted = await verifyFoundryAcceptance(
+              op.event.model,
+            ).catch(() =>
+              fail(
+                'FOUNDRY_UNAVAILABLE',
+                'Could not verify current owner acceptance in Mesh Foundry.',
+                503,
+              ),
+            );
+            if (!accepted)
+              fail(
+                'FOUNDRY_NOT_ACCEPTED',
+                'Mesh Foundry must currently accept this exact eligible model revision.',
+                409,
+              );
+          }
           events.push(op.event);
           affected.add(op.id);
           continue;
@@ -985,13 +1032,22 @@ export class Store extends EventEmitter {
       next.updatedAt = new Date().toISOString();
       next.receipts.push({ id: batch.requestId, hash: digest, result });
       next.receipts = next.receipts.slice(-100);
-      await this.snapshot(p);
-      await atomicWrite(join(this.folder(p.id), 'project.json'), next);
-      await this.prune(p.id).catch(() =>
-        result.warnings.push(
-          'Backup retention cleanup failed; the update was saved.',
-        ),
+      const reset = batch.operations.some(
+        (op) =>
+          op.type === 'rehearsal.record' &&
+          op.event.kind === 'orchestration' &&
+          op.event.record.stage === 'sync' &&
+          op.event.record.legacyReset,
       );
+      const shouldSnapshot = !reset && !batch.skipSnapshot;
+      if (shouldSnapshot) await this.snapshot(p);
+      await atomicWrite(join(this.folder(p.id), 'project.json'), next);
+      if (shouldSnapshot)
+        await this.prune(p.id).catch(() =>
+          result.warnings.push(
+            'Backup retention cleanup failed; the update was saved.',
+          ),
+        );
       this.emit('change', {
         projectId: p.id,
         kind: 'content',

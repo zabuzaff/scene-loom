@@ -1,6 +1,9 @@
 import { sceneDevelopment } from '../shared/development';
-import type { Handoff } from '../shared/rehearsal';
-import type { ApiError, ProjectData } from '../shared/schema';
+import {
+  orchestrationState,
+  type OrchestrationAction,
+} from '../shared/orchestration';
+import type { ApiError, ProjectData, SceneData } from '../shared/schema';
 import { BaselineName } from '../shared/storyboard';
 type PromptProject = Pick<
   ProjectData,
@@ -136,105 +139,82 @@ Optional direction: `;
 
 const handoffCheck = `Read the exact target with the Scene Loom CLI above. Verify the owning project ID and storyboard target ID, and require meshFoundryEnabled === true. Stop if the target is unavailable or the toggle is off. Find the local Mesh Foundry checkout and read its current agent interface. Run its read-only scene-loom SOURCE_PROJECT_ID STORYBOARD_ID command with those exact IDs to discover the shared library, assets and storyboard pins. Use the configured services and data directories.`;
 
-export function rehearsalPrepPrompt(
+export const orchestrationActions: Record<
+  OrchestrationAction,
+  { label: string; help: string }
+> = {
+  sync: {
+    label: 'Copy accepted-asset sync prompt',
+    help: 'Paste into your Scene Loom agent. It verifies Foundry acceptance and saves the exact IDs and any gaps on this card.',
+  },
+  plan: {
+    label: 'Copy scene orchestrator planner prompt',
+    help: 'Paste into your Scene Loom agent. It saves a proposed placement and behavior plan here for your approval.',
+  },
+  publish: {
+    label: 'Copy rehearsal draft prompt',
+    help: 'Paste into your Rehearsal builder chat. It publishes or corrects a placeholder draft and links the exact revision here.',
+  },
+  'review-draft': {
+    label: 'Copy rehearsal draft review prompt',
+    help: 'Paste into a fresh reviewer chat. Inspect the linked draft and record findings here. Approve the checked revision in Rehearsal when it passes.',
+  },
+  handoff: {
+    label: 'Copy game implementation handoff',
+    help: 'Paste into your game project chat. It uses the approved plan and draft to carry placements and runtime checks into the game.',
+  },
+};
+
+export function orchestrationPrompt(
   info: AgentInfo,
-  project: PromptProject,
-  scene: { id: string; title: string },
+  project: ProjectData,
+  scene: SceneData,
+  action: OrchestrationAction,
+  staleFoundryPlanId?: string,
 ) {
-  return `${interfacePrompt(info)}${storyboardReference(info, project, scene.id)}
-Prepare a draft rehearsal brief for ${scene.title} (${scene.id}).
-${handoffCheck}
+  const revision = project.rehearsalInputRevision ?? project.contentRevision;
+  const { sync, plan, decision, draft, review, next } = orchestrationState(
+    scene.rehearsalEvents,
+    revision,
+  );
+  const recovery =
+    action === 'sync' &&
+    (next === 'resolve' ||
+      (next === 'decide' &&
+        plan?.eventId === staleFoundryPlanId &&
+        !!staleFoundryPlanId));
+  if (action !== next && !recovery) return;
+  const write =
+    'Read schema batch. Record one rehearsal.record event with kind orchestration, the scene ID, a unique event ID, current afterEventId, expectedContentRevision and a unique request ID. Dry-run and apply. On conflict reread both apps, reconcile exact IDs and retry only if work still targets the current inputs. If Foundry acceptance changed, persist a fresh exact sync preview with its gaps before continuing. Never retarget prior approval or review.';
+  const planTuple =
+    plan && decision?.verdict === 'approved'
+      ? {
+          storyboardId: project.id,
+          sceneId: scene.id,
+          planId: plan.eventId,
+          planRevision: plan.eventId,
+          approvalId: decision.eventId,
+        }
+      : undefined;
+  const details = {
+    sync: `Use ${info.cli} scene accepted-assets ${project.id} ${scene.id} for the exact linked library and live model acceptance. Compare with the selected scene assets. If no selection is saved, ask the owner to confirm the exact selection and save selectedAssets via a separate scene.patch, using [] when the scene needs none. Reread before syncing. Save stage sync with the exact preview (including issues), preserving the selection and existing pins. If an active legacy rehearsal requires retirement, obtain explicit owner approval before setting legacyReset: true. Report the verified assets and specific gaps shown on this card. Keep Foundry and Rehearsal read-only.`,
+    plan: `Use the current storyboard scene intent, vision, references and exact synced models below. Save stage plan with syncId, your planner identity, proposed groups and stable pieces, meter/Y-up center positions, base dimensions, scale and XYZ rotations in radians, camera or traversal, interaction and animation cues, references and concrete checks. Address saved owner feedback and any plan-changes-requested draft findings. Tell the owner what to preview and decide on this card. Wait for their approval here before any draft publication.`,
+    publish: `Read Scene Rehearsal docs/PLAN_DRAFTS.md. Verify the approved plan tuple below immediately before publishing to the exact intended canonical library (use the historical library if recorded). List planHeads; start at parent null for a new tuple, or use the recorded digest as parent when correcting findings. Publish a v3 placeholder-only draft using the approved IDs, transforms and intended behavior cues. Carry unsupported runtime checks forward. Read back the digest, tuple, parent and scenario before stage publication writeback. Include your builder identity. Carry each plan behavior as an event intent, each camera or traversal description as an event intent with a camera or route, and the plan checks verbatim in pendingChecks. On a Loom conflict reconcile the current published digest and its actual parent. Verify its same-plan ancestry back to Loom’s last recorded digest (or the root of the plan) before considering another publication.`,
+    'review-draft': `Work in a fresh independent session. Open the exact recorded Rehearsal digest and inspect placements, stable piece IDs, scenario camera or traversal and intended behavior cues against the approved plan. Record specific findings. For issues, pin feedback to this exact digest in Rehearsal and write stage draft-review with changes-requested for draft corrections or plan-changes-requested if the approved plan itself must change. For a pass, show what was checked to the owner and have them approve this digest in Rehearsal. Recheck the live accepted-assets preview against the saved manifest before writing approval. If acceptance changed, save the new sync and its gaps instead. Read back final approval and include the exact draftReview.checked text in stage draft-review findings. Use the publication event ID and your reviewer identity, distinct from the planner and builder. The result appears on this card.`,
+    handoff: `Read the exact final approved package and Loom records. Verify live accepted-assets against the saved manifest before using any assets. If the required pins changed, record a fresh sync and stop until the scene has an approved handoff again. Verify the approved digest is still the current Rehearsal plan head and the captured Loom tuple is still active. If the library has advanced, stop implementation, reconcile the actual head publication and its same-plan ancestry against the last recorded digest and approval, and return it for independent review. If Loom state changed, use the current card action. Carry the plan, transforms, stable piece IDs, accepted Foundry revisions, references, review findings and pending runtime checks into this scene's game implementation. Implement model placement, collision, selection and final animation in the game, then verify there. Preserve historical rehearsal evidence and report the runtime results in your implementation chat.`,
+  };
+  const context =
+    action === 'sync' ? {} : { sync, plan, decision, planTuple, draft, review };
+  return `${interfacePrompt(info)}${storyboardReference(info, project, scene.id)}Scene: ${scene.title} (${scene.id})
+Intent: ${scene.description}
+Creative notes: ${scene.notes}
 
-If the linked lookup returns library: null, distinguish an unresolved library from a verified empty inventory. If the owner has identified a legacy library, verify its exact project ID and data directory with a read-only Foundry read. Otherwise ask which library to use and stop before saving asset decisions. If the owner confirms there is no library yet, record that explicitly as a gap.
+${orchestrationActions[action].help}
+${details[action]}
+${action === 'handoff' ? '' : write}
 
-Read this scene, its linked scenes, Project Vision, and any approved imagery. Walk through the user actions and expected responses. Inspect the whole Foundry library for this project, including models outside the original suggestions. Inspect relevant geometry, dimensions, separate parts and embedded clip names. Verify model-stage acceptance for exact source revisions; concept pins are context. Explain any inspection limits and record unverified requirements as gaps.
-
-Design the interior around the use cases and actual asset sizes. Decide what shares a space and what needs a nook, partition, new wall, opening, or separate room. Propose shell changes and what to extract from multi-part prototypes where appropriate. Check character scale, access, sightlines, interaction clearances and walking routes. Record your layout choice and why it serves the scene. Distinguish a blockout change from a revision to an approved model.
-
-For each relevant asset, decide use, optional, leave out, or missing and explain why. Specify whether each character or prop stays static, loops, or responds to a scenario cue. For motion, record the trigger, visible result and end state; give exact existing clip names when verified. Distinguish a missing model or clip from timing, state changes, or playback support needed in Scene Rehearsal. Describe the scenarios and checkpoints to review.
-
-Save one draft in a brief-only batch via scene.patch on the exact scene with changes.rehearsalBrief. Read schema batch for the contract: basis (storyboardId and contentRevision from the storyboard you reviewed before writing), layout, scenarios, assets (name, decision, rationale, behavior, and optional exact source with libraryId, assetId and revisionId), and gaps. Read the latest review findings and concrete corrections from rehearsalEvents when revising a brief. Preserve prior evidence and unrelated fields. Reread before writing, use the content revision you reviewed and a unique requestId, and dry-run before applying. If the scene or vision changed materially, reconcile before saving. Report the proposed layout, selections and gaps for review. This prompt authorizes draft brief writeback only; keep Foundry and Rehearsal read-only.
-
-Optional direction: `;
-}
-
-const workflowWrite = `Use schema batch and project apply for the exact storyboard. Write only rehearsal.record operations with the scene ID, a unique eventId, afterEventId from the scene's last event (null if none), the expectedContentRevision you read, and a unique requestId. Dry-run and apply. On conflict, reread both apps and reconcile; never retarget old evidence to the latest revision. See “Reviewed rehearsal and asset fit” in the Scene Loom agent interface.`;
-
-export type AssetPromptAction =
-  | 'foundry'
-  | 'candidate-review'
-  | 'fit'
-  | 'rehearsal-correction'
-  | 'adopt-candidate';
-
-export function rehearsalAssetPrompt(
-  info: AgentInfo,
-  project: PromptProject,
-  scene: { id: string; title: string },
-  asset: Handoff,
-  head: { dataDir: string; port: number; revisionId: string; link: string },
-  action: AssetPromptAction,
-) {
-  const { requirement, candidate, acceptance, fit } = asset;
-  const source = candidate?.model ?? requirement.source;
-  const adoption = `Find an existing model for the exact Foundry library and asset in the active requirement. Verify its provenance and model-stage eligibility in Foundry. Check it against this requirement's current measurements and preservation list before adopting it. Record a candidate event with adoptExisting: true, basedOn equal to ${JSON.stringify(source)}, and model equal to the exact existing revision. Include modelLink if Foundry provides a verified direct link. Leave Foundry read-only. Independently record candidate-review evidence for the adopted revision. Use accepted only if Foundry confirms current owner acceptance of that exact model and it meets the requirement. If review clears but acceptance is not verified, record another candidate event reasserting the exact same model in model and basedOn with clearedReview: { ownerAcceptance, evidence }; set ownerAcceptance to pending only if the owner has yet to accept, or unverified if you could not confirm it. After recording adoption, stop and ask the creator to copy a fresh fit-check prompt once the new candidate is accepted. Do not transfer prior fit evidence.`;
-  const instruction =
-    action === 'adopt-candidate'
-      ? adoption
-      : action === 'foundry'
-        ? `Use Mesh Foundry's supported CLI to revise the exact source ${JSON.stringify(source)}. Read the saved measurements, changes, preservation list, and any model-defect or candidate-rejection evidence on that revision. For a correction, use the saved finding ${fit?.verdict === 'model-defect' ? fit.eventId : acceptance?.verdict === 'needs-revision' ? acceptance.eventId : '(none yet)'}. Verify the asset and source against Foundry before editing. Publish a candidate following Foundry's publication rules. Record a candidate event with this requirementId, basedOn, the exact published model tuple, and modelLink if Foundry provides a verified URL opening that exact revision. Do not republish to retry an interrupted writeback. Leave owner acceptance to Foundry.`
-        : action === 'candidate-review'
-          ? `Check the exact Foundry candidate ${JSON.stringify(candidate?.model)} against the saved requirements. Verify model-stage eligibility and owner acceptance using Foundry's supported read workflow. Record a candidate-review event with the candidate tuple and evidence; record accepted only if Foundry confirms owner acceptance and requirements are met. If review clears but acceptance is not verified, record a candidate event reasserting the exact same model in model and basedOn with clearedReview: { ownerAcceptance, evidence }; use pending only when confirmed pending, or unverified when acceptance cannot be confirmed. Explain the correct owner action. Save concrete corrections for a rejected candidate.`
-          : `Use Scene Rehearsal's supported CLI against the exact same-scene head ${JSON.stringify(head)}. Verify the exact accepted model ${JSON.stringify(acceptance?.model)} remains eligible in Foundry. If Foundry has superseded that acceptance, do not import the old revision. Follow this recovery path instead: ${adoption} If no replacement can be verified, report why and leave the fit unverified. Continue with assembly only if the originally targeted model remains eligible. If the external head differs, stop and ask the creator to copy the rehearsal continuation prompt to reconcile it. Set SCENE_REHEARSAL_DATA_DIR and SCENE_REHEARSAL_PORT from the saved reference and use npm start -- --status, then the Rehearsal CLI list and read to verify its head. Export the exact private Foundry bundle, import-model with the expected project, asset, revision, hash and ordered clips, and bind the returned sourceKey. Replace only the saved proxy or object IDs ${JSON.stringify(requirement.objects)} (or verify the accepted model already occupies those slots). Rerun the saved checks in composed playback: clearances, sightlines, camera, placement, and interaction or clip behavior. ${action === 'rehearsal-correction' ? `Read the saved rehearsal-issue evidence (${fit?.eventId}) and correct authorable placement or playback settings before repeating the fit check. For camera or playback behavior outside the authoring contract, record the reproduction in capabilityBlocker and keep the fit blocked.` : ''} Publish any corrected assembly through Rehearsal as a child of the verified head. Record a fit event with the accepted model, starting rehearsalRevisionId, exact assembled reference if a successor was published, and observed evidence. For an issue requiring a new Rehearsal feature, save the exact missing capability and reproduction in capabilityBlocker. Use pass only for a verified fit; classify model geometry or clip defects as model-defect and assembly, camera or playback problems as rehearsal-issue. Do not change Foundry from this prompt.`;
-  return `${interfacePrompt(info)}${storyboardReference(info, project, scene.id)}
-Read the exact scene's rehearsalEvents and current project input revision. Locate requirementId ${requirement.id} measured in rehearsal ${asset.measuredIn.revisionId}. Confirm it is still active and the current independent review clears the recorded rehearsal. The rehearsal head when this action was copied was ${head.revisionId}; stop if it differs. Read the saved requirements and related evidence directly. If the target has moved, stop and copy a fresh action.
-
-${handoffCheck}
-Resolve the exact saved Foundry library through that lookup, or verify its ID in the configured Foundry data directory against an owner-confirmed legacy mapping. Stop if the library or exact revision cannot be verified.
-
-${instruction}
-
-${workflowWrite}
-
-Optional creative direction: `;
-}
-
-export function rehearsalReviewPrompt(
-  info: AgentInfo,
-  project: PromptProject,
-  scene: { id: string; title: string },
-) {
-  return `${interfacePrompt(info)}${storyboardReference(info, project, scene.id)}
-Independently review the saved rehearsal brief for ${scene.title} (${scene.id}) in a fresh session. Act as the scene production reviewer. Make routine layout, staging, and asset recommendations yourself. Ask the creator only about material creative decisions that remain unresolved.
-
-Read the current storyboard, linked scenes, Project Vision, approved imagery, and the exact scene's rehearsalBrief. If the brief is missing, stop and report that. Check its basis against the current storyboard. If the basis is missing, belongs to another storyboard, or its contentRevision plus one differs from the current storyboard rehearsalInputRevision (falling back to contentRevision), identify what needs rechecking against the current inputs.
-
-Use the local Mesh Foundry agent interface and its read-only scene-loom lookup to verify the linked library and the exact revisions, model stages, geometry, and clips the brief relies on. If the linked library is missing or unavailable, use exact source library IDs saved in the brief to locate candidate legacy libraries. Read each candidate through the Foundry CLI in the configured data directory. Verify its identity against the owning project or an owner-confirmed library mapping, then check the recorded asset and revision IDs. If identity or provenance cannot be verified, report which sources remain unverified. Treat owner exclusions as constraints. Inspect Scene Rehearsal's current authoring contract for the proposed behaviors.
-
-Check whether the layout supports the scene's actions, sightlines and clearances. Challenge unnecessary assets, oversized assemblies, missing pieces, and assumptions about motion or triggers. Decide which motions can be staged now, which can use static proxies, and which need new Foundry clips or Rehearsal support. Recommend the smallest rehearsal that demonstrates the scene's core use cases and give observable checkpoints. Separate verified findings from checks that require a composed blockout.
-
-Report findings in priority order with evidence and concrete corrections. Give a Ready for blockout or Needs revision verdict for the proxy layout and state its exact scope. Separately give a Ready for model import or Blocked verdict for the required assets under Scene Rehearsal’s current import contract. An accepted study may inform a blockout. For model imports, verify exact model-stage acceptance and list each required asset that cannot be imported, why, and what would unblock it. If the rehearsal uses only proxies, mark model import as Not needed for this scope. Identify the storyboard and scene IDs, current content revision and brief basis so the result can be traced. Save the verdicts, scope, evidence and concrete corrections as a review event via rehearsal.record. Use the rehearsalInputRevision (or contentRevision if absent) you reviewed as inputRevision. Keep the brief unchanged and Foundry and Rehearsal read-only.
-
-${workflowWrite}
-
-Optional review focus: `;
-}
-
-export function rehearsalHandoffPrompt(
-  info: AgentInfo,
-  project: PromptProject,
-  scene: { id: string; title: string },
-) {
-  return `${interfacePrompt(info)}${storyboardReference(info, project, scene.id)}
-Stage or continue the Scene Rehearsal draft for ${scene.title} (${scene.id}). Read the saved rehearsalBrief, linked scenes, and Project Vision. Read the latest independent review and existing draft reference from rehearsalEvents. Verify the saved review inputRevision matches the storyboard rehearsalInputRevision (falling back to contentRevision). If the brief or matching review is missing, or the verdict is Needs revision, explain how to resolve it before publishing.
-
-Read the Scene Rehearsal checkout's guidance and CLI contract. Verify the intended local library. Each library has one publication head. If a draft for this scene already exists, use its recorded canonical data directory and port, verify with npm start -- --status and CLI list/read that the actual library head descends from the recorded scene revision, and continue its current head. Use the linked rehearsal or an unambiguous match. If the library head belongs to another scene, use a dedicated empty library for the new scene rather than publishing against that head. Resolve any uncertainty about library or scene identity before writing. Use the exact scope cleared by the review. If imports are blocked or unnecessary, stage with primitives and markers. Import only required exact revisions verified under the current import contract. Respect creator exclusions.
-
-Make routine staging decisions yourself. Compose the room and test camera views, visibility and selection at desktop and narrow widths. Measure entrances, routes and interaction clearances with occupied footprints. Make supported scenarios playable and flag unsupported interactions as annotated checkpoints. Correct layout or camera issues within scope and verify the resulting playback. Report any Foundry follow-ups in priority order with source revision, tested dimensions and concrete geometry or clip changes. Keep Foundry read-only. Immediately before publishing, reread the storyboard and saved brief and check that the independent review still matches. If the brief or storyboard changed, recheck the cleared scope and obtain an updated review before publishing. Reread the intended library head. If it moved, verify its scene identity again, reconcile your changes with the latest draft, and preserve intervening edits. Use the reconciled head as parent. On a stale-parent conflict repeat these checks before retrying. Publish the rehearsal draft and record a draft event with the exact new revision and link, the saved review event ID, the previous recorded rehearsal revision (or null initially), and one measured requirement per Foundry asset needing fit evidence, even if an existing model can be adopted unchanged. Set optional: true only for optional assets. Include sourceLink when Foundry provides a verified direct link. Save the canonical absolute SCENE_REHEARSAL_DATA_DIR and resolved loopback port as part of the reference. The event's parentRevisionId is the prior Scene Loom head; Rehearsal publish uses its actual verified parent digest. Reconcile an already-published draft instead of publishing it twice. After a new review, the same head may be recorded without republishing if revalidated under the new review. Include exact source IDs, proxy or object IDs, numeric constraints with units, requested changes, what to preserve, and observable checks. Re-measure any requirements you replace; omit unchanged requirements and list obsolete requirement IDs in retireRequirementIds. Return playable scenarios and open checks. Leave approval and export to the owner.
-
-${workflowWrite}
-
-Optional staging direction: `;
+Read back the current scene before acting. Captured workflow state:
+${JSON.stringify(context, null, 2)}`;
 }
 
 export function assetSuggestionPrompt(info: AgentInfo, project: PromptProject) {

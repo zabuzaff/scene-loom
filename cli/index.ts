@@ -5,7 +5,7 @@ import { schemas, Id } from '../shared/schema.js';
 
 const args = process.argv.slice(2);
 const print = (v: unknown) => console.log(JSON.stringify(v, null, 2));
-const help = `Scene Loom — agent interface\nAll results are JSON. Inputs are JSON files or - for stdin.\n\n  schema [batch|project|layout|createProject|createStoryboard|importAsset|restore|viewport]\n  project list\n  project create INPUT\n  project read PROJECT_ID\n  storyboard create SOURCE_TARGET_ID INPUT\n  project apply PROJECT_ID INPUT [--dry-run]\n  asset import PROJECT_ID INPUT\n  scene read PROJECT_ID SCENE_ID\n  layout patch PROJECT_ID INPUT\n  backup list PROJECT_ID\n  backup restore PROJECT_ID INPUT\n\nStart the service with npm run dev (or npm run build && npm start).\nSet SCENE_LOOM_DATA_DIR for an alternate absolute local data root.\nAsset import INPUT: {"path":"/absolute/path/image.png","kind":"project-image"}\nRead docs/agent-interface.md before mutations.`;
+const help = `Scene Loom — agent interface\nAll results are JSON. Inputs are JSON files or - for stdin.\n\n  schema [batch|project|layout|createProject|createStoryboard|importAsset|restore|viewport]\n  project list\n  project create INPUT\n  project read PROJECT_ID\n  storyboard create SOURCE_TARGET_ID INPUT\n  project apply PROJECT_ID INPUT [--dry-run]\n  asset import PROJECT_ID INPUT\n  scene read PROJECT_ID SCENE_ID\n  scene accepted-assets PROJECT_ID SCENE_ID\n  layout patch PROJECT_ID INPUT\n  backup list PROJECT_ID\n  backup restore PROJECT_ID INPUT\n\nStart the service with npm run dev (or npm run build && npm start).\nSet SCENE_LOOM_DATA_DIR for an alternate absolute local data root.\nAsset import INPUT: {"path":"/absolute/path/image.png","kind":"project-image"}\nRead docs/agent-interface.md before mutations.`;
 async function input(path?: string) {
   if (!path) throw new Error('Provide a JSON file path or - for stdin.');
   if (path === '-') {
@@ -36,6 +36,7 @@ async function main() {
     'project apply',
     'asset import',
     'scene read',
+    'scene accepted-assets',
     'layout patch',
     'backup list',
     'backup restore',
@@ -69,9 +70,10 @@ async function main() {
       method = 'POST';
       body = await input(path);
       break;
+    case 'scene accepted-assets':
     case 'scene read':
       Id.parse(path);
-      route += `/${id}/scenes/${path}`;
+      route += `/${id}/scenes/${path}${verb === 'accepted-assets' ? '/accepted-assets' : ''}`;
       break;
     case 'layout patch':
       route += `/${id}/layout`;

@@ -1,3 +1,4 @@
+import { acceptancePreview } from './orchestration.js';
 import Fastify from 'fastify';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -5,7 +6,7 @@ import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { Store, StudioError, fail } from './store.js';
-import { Id, ImportAsset, schemas } from '../shared/schema.js';
+import { Batch, Id, ImportAsset, schemas } from '../shared/schema.js';
 import { repositoryRoot } from '../shared/config.js';
 import type { ServerResponse } from 'node:http';
 
@@ -133,6 +134,19 @@ export async function createApp(options: {
       scene: s,
     });
   });
+  app.get('/api/projects/:id/scenes/:sceneId/accepted-assets', async (req) => {
+    const { id, sceneId } = req.params as { id: string; sceneId: string };
+    const project = await store.read(id);
+    if (!project.meshFoundryEnabled)
+      fail(
+        'HANDOFF_DISABLED',
+        'Enable Mesh Foundry handoff for this storyboard.',
+        403,
+      );
+    const scene = project.scenes.find((scene) => scene.id === sceneId);
+    if (!scene) fail('NOT_FOUND', 'Scene does not exist.', 404);
+    return ok(await acceptancePreview(project, scene));
+  });
   app.post('/api/projects/:id/assets', async (req) => {
     // Local file import is a trusted CLI capability, never a browser capability.
     if (
@@ -146,13 +160,51 @@ export async function createApp(options: {
       await store.importAsset((req.params as { id: string }).id, path, kind),
     );
   });
+  app.post('/api/projects/:id/plan-decision', async (req) => {
+    if (
+      !req.headers.origin ||
+      req.headers.authorization ||
+      req.headers['sec-fetch-site'] !== 'same-origin'
+    )
+      fail(
+        'OWNER_DECISION_REQUIRED',
+        'Decide on the plan in the Scene Loom card.',
+        403,
+      );
+    const batch = Batch.parse(req.body);
+    const { id } = req.params as { id: string };
+    const op = batch.operations[0];
+    if (
+      batch.projectId !== id ||
+      batch.operations.length !== 1 ||
+      op.type !== 'rehearsal.record' ||
+      op.event.kind !== 'orchestration' ||
+      op.event.record.stage !== 'decision'
+    )
+      fail('INVALID_DECISION', 'Submit one plan decision for this storyboard.');
+    return ok(await store.apply(batch));
+  });
   app.post('/api/projects/:id/apply', async (req) => {
     const id = Id.parse((req.params as { id: string }).id);
     if ((req.body as { projectId?: string })?.projectId !== id)
       fail('PROJECT_MISMATCH', 'Route and batch project IDs differ.');
+    const batch = Batch.parse(req.body);
+    if (
+      batch.operations.some(
+        (op) =>
+          op.type === 'rehearsal.record' &&
+          op.event.kind === 'orchestration' &&
+          op.event.record.stage === 'decision',
+      )
+    )
+      fail(
+        'OWNER_DECISION_REQUIRED',
+        'Decide on the plan in the Scene Loom card.',
+        403,
+      );
     return ok(
       await store.apply(
-        req.body,
+        batch,
         (req.query as { dryRun?: string }).dryRun === 'true',
       ),
     );

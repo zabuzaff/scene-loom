@@ -1144,3 +1144,213 @@ test('reviewed slices share one checkpoint, enforce dependencies and reject stal
   });
   assert.equal(fork.development, undefined);
 });
+
+test('legacy reset previews and appends one verified manifest without a snapshot', async (t) => {
+  const { root, store, scene, batch } = await fixture(t);
+  const source = {
+    libraryId: 'library',
+    assetId: 'desk',
+    revisionId: 'prototype',
+  };
+  const workspace = join(root, 'foundry');
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(workspace);
+  const previous = process.env.MESH_FOUNDRY_DATA_DIR;
+  process.env.MESH_FOUNDRY_DATA_DIR = workspace;
+  t.after(() => {
+    if (previous === undefined) delete process.env.MESH_FOUNDRY_DATA_DIR;
+    else process.env.MESH_FOUNDRY_DATA_DIR = previous;
+  });
+  await writeFile(
+    join(workspace, 'runtime.json'),
+    JSON.stringify({ url: 'http://127.0.0.1:4329', token: 'fixture' }),
+  );
+  t.mock.method(globalThis, 'fetch', async () =>
+    Response.json({
+      id: 'library',
+      assets: [{ id: 'desk', name: 'Desk' }],
+      accepted: { desk: 'developed' },
+      acceptance: [
+        { revisionId: 'developed', previousRevisionId: 'prototype' },
+      ],
+      revisions: [
+        {
+          id: 'prototype',
+          assetId: 'desk',
+          stage: 'study',
+          fixture: false,
+          files: [{ kind: 'model' }],
+        },
+        {
+          id: 'developed',
+          assetId: 'desk',
+          stage: 'model',
+          fixture: false,
+          files: [{ kind: 'model' }],
+        },
+      ],
+    }),
+  );
+  await store.settings('test', { meshFoundryEnabled: true });
+  await store.apply(
+    batch([
+      {
+        type: 'scene.create',
+        scene: {
+          ...scene('room'),
+          rehearsalBrief: {
+            layout: 'Desk in room',
+            scenarios: ['Arrive'],
+            assets: [
+              {
+                name: 'Desk',
+                decision: 'use',
+                rationale: 'Needed',
+                behavior: 'Static',
+                source,
+              },
+              {
+                name: 'Missing ledger',
+                decision: 'missing',
+                rationale: 'Needed',
+                behavior: 'Static',
+              },
+            ],
+            gaps: [],
+          },
+        },
+      },
+      { type: 'scene.create', scene: scene('hall') },
+    ]),
+  );
+  const initial = await store.read('test');
+  const review = {
+    type: 'rehearsal.record' as const,
+    id: 'room',
+    afterEventId: null,
+    event: {
+      kind: 'review' as const,
+      eventId: 'legacy',
+      inputRevision: initial.rehearsalInputRevision!,
+      imports: 'ready' as const,
+      blockout: 'ready' as const,
+      scope: 'Room',
+      findings: ['Ready'],
+    },
+  };
+  await store.apply(batch([review], initial.contentRevision, 'legacy'));
+  const copy = await store.createStoryboard('test', {
+    name: 'Separate storyboard',
+  });
+  const untouched = await store.read(copy.id);
+  const before = await store.read('test');
+  const backups = await store.backups('test');
+  const sync = batch(
+    [
+      {
+        type: 'rehearsal.record',
+        id: 'room',
+        afterEventId: 'legacy',
+        event: {
+          kind: 'orchestration',
+          eventId: 'sync',
+          record: {
+            stage: 'sync',
+            legacyReset: true,
+            inputRevision: before.rehearsalInputRevision!,
+            libraryId: 'library',
+            entries: [
+              { name: 'Desk', required: true, source },
+              {
+                name: 'Missing ledger',
+                required: true,
+                issue: 'No matching asset in the linked library.',
+              },
+            ],
+          },
+        },
+      },
+    ],
+    before.contentRevision,
+    'sync',
+  );
+  assert.equal((await store.apply(sync, true)).dryRun, true);
+  assert.deepEqual(await store.read('test'), before);
+  await store.apply(sync);
+  const after = await store.read('test');
+  assert.deepEqual(await store.backups('test'), backups);
+  assert.deepEqual(await store.read(copy.id), untouched);
+  assert.deepEqual(after.positions, before.positions);
+  assert.deepEqual(after.scenes[1], before.scenes[1]);
+  assert.deepEqual(
+    after.scenes[0].rehearsalBrief,
+    before.scenes[0].rehearsalBrief,
+  );
+  assert.deepEqual(
+    after.scenes[0].rehearsalEvents?.slice(0, -1),
+    before.scenes[0].rehearsalEvents,
+  );
+  assert.equal(after.scenes[0].rehearsalEvents?.at(-1)?.eventId, 'sync');
+  const selection = batch(
+    [
+      {
+        type: 'scene.patch',
+        id: 'room',
+        changes: { selectedAssets: [{ name: 'Desk', required: true, source }] },
+      },
+    ],
+    after.contentRevision,
+    'selection',
+  );
+  await assert.rejects(
+    store.apply({
+      ...selection,
+      skipSnapshot: true,
+      operations: [{ type: 'scene.delete', id: 'hall' }],
+    }),
+    hasCode('VALIDATION_ERROR'),
+  );
+  await store.apply({ ...selection, skipSnapshot: true });
+  const selected = await store.read('test');
+  await store.apply({
+    ...batch(
+      [
+        {
+          type: 'rehearsal.record',
+          id: 'room',
+          afterEventId: 'sync',
+          event: {
+            kind: 'orchestration',
+            eventId: 'corrected-sync',
+            record: {
+              stage: 'sync',
+              inputRevision: selected.rehearsalInputRevision!,
+              libraryId: 'library',
+              entries: [{ name: 'Desk', required: true, source }],
+            },
+          },
+        },
+      ],
+      selected.contentRevision,
+      'corrected-sync',
+    ),
+    skipSnapshot: true,
+  });
+  assert.deepEqual(await store.backups('test'), backups);
+  await assert.rejects(
+    store.apply(
+      batch(
+        [
+          {
+            ...review,
+            afterEventId: 'corrected-sync',
+            event: { ...review.event, eventId: 'late' },
+          },
+        ],
+        selected.contentRevision + 1,
+        'late',
+      ),
+    ),
+    hasCode('STALE_REHEARSAL'),
+  );
+});

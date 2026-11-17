@@ -1,13 +1,5 @@
-import { Copy } from 'lucide-react';
 import { developmentLabels, developmentTargetKey } from '../shared/development';
-import {
-  assetNextAction,
-  fitIsCurrent,
-  rehearsalState,
-  sceneNextAction,
-} from '../shared/rehearsal';
-import type { SceneData } from '../shared/schema';
-import type { Handoff } from '../shared/rehearsal';
+import { orchestrationState } from '../shared/orchestration';
 import type { CardData } from './SceneCard';
 
 export function DevelopmentAction({ data }: { data: CardData }) {
@@ -143,296 +135,101 @@ export function ExternalRevision({
   );
 }
 
-export function isRequiredAsset(
-  scene: SceneData,
-  requirement: Handoff['requirement'],
-) {
-  if (requirement.optional !== undefined) return !requirement.optional;
-  const entry = scene.rehearsalBrief?.assets.find(({ source, name }) =>
-    source
-      ? source.libraryId === requirement.source.libraryId &&
-        source.assetId === requirement.source.assetId
-      : name === requirement.name,
-  );
-  return entry?.decision !== 'optional' && entry?.decision !== 'leave out';
-}
-
-export function requiredRehearsalAssets(scene: SceneData, assets: Handoff[]) {
-  const required = assets.filter(({ requirement }) =>
-    isRequiredAsset(scene, requirement),
-  );
-  const unmeasured = (scene.rehearsalBrief?.assets ?? []).filter(
-    (item) =>
-      (item.decision === 'use' || item.decision === 'missing') &&
-      !assets.some(({ requirement }) =>
-        item.source
-          ? item.source.libraryId === requirement.source.libraryId &&
-            item.source.assetId === requirement.source.assetId
-          : item.name === requirement.name,
-      ),
-  );
-  return { required, unmeasured };
-}
-
 export function GameResume({ data }: { data: CardData }) {
   const { scene, rehearsalInputRevision, development } = data;
-  const state = rehearsalState(scene.rehearsalEvents);
-  const { head, assets, review } = state;
-  const stage = sceneNextAction(
-    !!scene.rehearsalBrief,
+  const { sync, current, next } = orchestrationState(
+    scene.rehearsalEvents,
     rehearsalInputRevision,
-    state,
   );
-  const current = data.rehearsalEnabled && !stage && !!head;
-  const { required, unmeasured } = requiredRehearsalAssets(scene, assets);
-  const fit = current
-    ? required.filter(
-        (asset) => fitIsCurrent(asset, head) && asset.fit?.verdict === 'pass',
-      ).length
-    : 0;
-  const total = required.length + unmeasured.length;
-  const sliceTotal = development?.slices.length ?? 0;
-  const verified =
-    development?.slices.filter(({ status }) => status === 'verified').length ??
-    0;
+  const required = sync?.entries.filter((entry) => entry.required) ?? [];
+  const verified = required.filter((entry) => entry.source).length;
   const latest = development?.latest;
-  const nextCheckpoint = development?.next.latest;
-  const checkpoint = latest?.checkpoint;
-  const issues = assets.filter(({ fit }) => fit?.verdict === 'rehearsal-issue');
-  const latestHandoff = scene.rehearsalEvents?.at(-1);
-  const handoffResult =
-    latestHandoff &&
-    ('evidence' in latestHandoff
-      ? latestHandoff.evidence[0]
-      : latestHandoff.kind === 'candidate'
-        ? (latestHandoff.clearedReview?.evidence[0] ??
-          'Foundry candidate recorded.')
-        : latestHandoff.kind === 'draft'
-          ? 'Rehearsal saved.'
-          : latestHandoff.findings[0]);
-  const currentIssue = issues.find(
-    (asset) => current && fitIsCurrent(asset, head),
-  );
+  const checkpoint = development?.next.latest;
+  const slices = development?.slices ?? [];
   const blocker =
     development?.next.prerequisite?.name ??
-    (nextCheckpoint?.planRevision === development?.planRevision
-      ? nextCheckpoint?.checkpoint.blocker
-      : undefined) ??
-    currentIssue?.fit?.capabilityBlocker ??
-    (review?.blockout === 'needs-revision' ? review.findings[0] : undefined);
-  const unfinished = required.find(
-    (asset) => !fitIsCurrent(asset, head) || asset.fit?.verdict !== 'pass',
-  );
-  const action = unfinished && assetNextAction(unfinished, head);
-  const nextAsset =
-    unfinished && action
-      ? {
-          foundry: 'Copy Foundry revision request',
-          'candidate-review':
-            unfinished.candidate?.clearedReview?.ownerAcceptance === 'pending'
-              ? 'Accept this revision in Mesh Foundry'
-              : unfinished.candidate?.clearedReview
-                ? 'Copy Foundry acceptance verification prompt'
-                : 'Copy developed model review prompt in Mesh Foundry',
-          fit: 'Copy rehearsal fit-check prompt',
-          'rehearsal-correction': 'Copy rehearsal correction request',
-          'capability-blocked':
-            'Open the affected rehearsal for the capability blocker',
-        }[action] + ` · ${unfinished.requirement.name}`
-      : undefined;
-  const nextHandoff = !data.rehearsalEnabled
-    ? undefined
-    : stage === 'rehearsal'
-      ? rehearsalPreparationLabel(!!scene.rehearsalBrief)
-      : stage === 'rehearsal-review'
-        ? 'Copy rehearsal review prompt'
-        : stage === 'rehearsal-handoff'
-          ? 'Copy rehearsal handoff prompt'
-          : (nextAsset ??
-            (unmeasured.length
-              ? 'Copy rehearsal continuation prompt to measure required assets'
-              : undefined));
-  const nextCopy =
-    stage ??
-    (!unfinished
-      ? unmeasured.length
-        ? 'rehearsal-handoff'
-        : undefined
-      : action === 'capability-blocked' ||
-          (action === 'candidate-review' &&
-            (!unfinished.candidate?.clearedReview ||
-              unfinished.candidate.clearedReview.ownerAcceptance === 'pending'))
-        ? undefined
-        : action);
-  const nextLink =
-    !stage &&
-    (action === 'capability-blocked'
-      ? head?.link
-      : action === 'candidate-review' && !nextCopy
-        ? unfinished?.candidate?.modelLink
-        : undefined);
+    (checkpoint?.planRevision === development?.planRevision
+      ? checkpoint?.checkpoint.blocker
+      : undefined);
+  const rehearsalStatus = {
+    sync: 'Asset sync pending',
+    resolve: 'Required assets unresolved',
+    plan: 'Plan proposal pending',
+    decide: 'Owner plan decision pending',
+    publish: 'Placeholder draft pending',
+    'review-draft': 'Independent draft review pending',
+    handoff: 'Draft approved for game implementation',
+  }[next];
   return (
     <section className="game-resume">
       <div className="game-resume-summary">
         <h3>Where you left off</h3>
         <p className="game-resume-result">
-          {checkpoint &&
-            latest?.planRevision !== development?.planRevision &&
-            'Earlier plan · '}
-          {checkpoint?.changed ??
-            handoffResult ??
-            'No checkpoint or rehearsal result saved yet.'}
+          {latest?.planRevision !== development?.planRevision && latest
+            ? 'Earlier plan · '
+            : ''}
+          {latest?.checkpoint.changed ??
+            (data.rehearsalEnabled
+              ? rehearsalStatus
+              : 'No development checkpoint saved yet.')}
         </p>
         {blocker && (
           <p>
-            <strong>Blocker:</strong> {blocker}
+            <strong>Blocker</strong> · {blocker}
           </p>
         )}
-        {nextCheckpoint &&
-          nextCheckpoint.planRevision === development?.planRevision && (
-            <p>
-              <strong>Resume:</strong> {nextCheckpoint.checkpoint.resume}
-            </p>
+        {checkpoint &&
+          checkpoint.planRevision === development?.planRevision && (
+            <p>Resume · {checkpoint.checkpoint.resume}</p>
           )}
-        {checkpoint && handoffResult && (
-          <p>
-            <strong>Handoff update:</strong> {handoffResult}
-          </p>
-        )}
-        {nextHandoff && (
-          <p>
-            <strong>Next handoff:</strong>{' '}
-            {nextCopy ? (
-              <button
-                className="scene-inline-action studio-copy-action nodrag"
-                onClick={() =>
-                  data.copy(
-                    scene.id,
-                    nextCopy,
-                    stage ? undefined : unfinished?.requirement.id,
-                  )
-                }
-              >
-                <Copy size={14} aria-hidden="true" />
-                {nextHandoff}
-              </button>
-            ) : nextLink ? (
-              <ExternalRevision link={nextLink}>{nextHandoff}</ExternalRevision>
-            ) : (
-              nextHandoff
-            )}
-          </p>
-        )}
       </div>
       <dl className="game-progress">
-        <div>
-          <dt>Required asset fit</dt>
-          <dd>
-            {total
-              ? `${fit} of ${total} required assets fit the current rehearsal`
-              : 'No required assets recorded'}
-            {total > 0 && (
-              <StudioProgress
-                label="Required asset fit"
-                value={fit}
-                max={total}
-              />
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Rehearsal</dt>
-          <dd>
-            {!data.rehearsalEnabled
-              ? 'Mesh Foundry handoff is off'
-              : current
-                ? 'Current rehearsal recorded'
-                : head
-                  ? 'Saved rehearsal needs re-review'
-                  : 'No rehearsal recorded'}
-            {data.rehearsalEnabled && (
-              <StudioProgress
-                label="Rehearsal preparation"
-                value={
-                  current
-                    ? 3
-                    : stage === 'rehearsal-handoff'
-                      ? 2
-                      : stage === 'rehearsal-review'
-                        ? 1
-                        : 0
-                }
-                max={3}
-              />
-            )}
-            {head && (
-              <p>
-                <ExternalRevision link={head.link}>
-                  Open rehearsal {head.revisionId}
-                </ExternalRevision>
-              </p>
-            )}
-          </dd>
-        </div>
+        {data.rehearsalEnabled && (
+          <>
+            <div>
+              <dt>Required asset acceptance</dt>
+              <dd>
+                {current && required.length
+                  ? `${verified} of ${required.length} required assets verified`
+                  : current
+                    ? 'No required assets selected'
+                    : 'Current sync pending'}
+                {current && required.length > 0 && (
+                  <StudioProgress
+                    label="Required asset acceptance"
+                    value={verified}
+                    max={required.length}
+                  />
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>Rehearsal</dt>
+              <dd>{rehearsalStatus}</dd>
+            </div>
+          </>
+        )}
         <div>
           <dt>Implementation</dt>
           <dd>
-            {sliceTotal
-              ? `${verified} of ${sliceTotal} slices verified`
+            {slices.length
+              ? `${slices.filter((slice) => slice.status === 'verified').length} of ${slices.length} slices verified`
               : 'No development slices mapped'}
-            {sliceTotal > 0 && (
+            {slices.length > 0 && (
               <StudioProgress
                 label="Implementation"
-                value={verified}
-                max={sliceTotal}
+                value={
+                  slices.filter((slice) => slice.status === 'verified').length
+                }
+                max={slices.length}
               />
             )}
           </dd>
         </div>
       </dl>
-      {issues.length > 0 && (
-        <details className="nodrag">
-          <summary>Open rehearsal issues ({issues.length})</summary>
-          <ul>
-            {issues.map((asset) => (
-              <li key={asset.requirement.id}>
-                {asset.requirement.name}:{' '}
-                {asset.fit!.capabilityBlocker ?? asset.fit!.evidence.join('; ')}
-                {!current || !fitIsCurrent(asset, head)
-                  ? ' (earlier rehearsal)'
-                  : ''}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      {unmeasured.length > 0 && (
-        <ul className="game-missing-assets">
-          {unmeasured.map((item, index) => (
-            <li key={index}>
-              {item.name}: No fit requirement saved. Scene Loom →{' '}
-              {stage === 'rehearsal-review'
-                ? 'Copy rehearsal review prompt'
-                : stage === 'rehearsal'
-                  ? 'Copy rehearsal brief correction'
-                  : stage === 'rehearsal-handoff'
-                    ? 'Copy rehearsal handoff prompt'
-                    : 'Copy rehearsal continuation prompt'}
-              .
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }
-
-function rehearsalPreparationLabel(hasBrief: boolean) {
-  return hasBrief
-    ? 'Copy rehearsal brief correction'
-    : 'Copy rehearsal prep prompt';
-}
-
 function StudioProgress({
   label,
   value,

@@ -1,3 +1,4 @@
+import { OrchestrationRecord } from './orchestration.js';
 import { z } from 'zod';
 
 const key = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/);
@@ -37,6 +38,7 @@ const Requirement = z.strictObject({
 });
 const event = z.strictObject({ eventId: key });
 export const RehearsalEvent = z.discriminatedUnion('kind', [
+  OrchestrationRecord,
   event.extend({
     kind: z.literal('review'),
     inputRevision: revision,
@@ -72,6 +74,9 @@ export const RehearsalEvent = z.discriminatedUnion('kind', [
     requirementId: key,
     model: Model,
     verdict: z.enum(['accepted', 'needs-revision']),
+    ownerOverride: z
+      .strictObject({ rejectionEventId: key, reason: note })
+      .optional(),
     evidence: notes,
   }),
   event.extend({
@@ -88,7 +93,7 @@ export const RehearsalEvent = z.discriminatedUnion('kind', [
 export type RehearsalEvent = z.infer<typeof RehearsalEvent>;
 type Event<K> = Extract<RehearsalEvent, { kind: K }>;
 type Requirement = z.infer<typeof Requirement>;
-type Model = z.infer<typeof Model>;
+export type Model = z.infer<typeof Model>;
 export type Handoff = {
   requirement: Requirement;
   measuredIn: Event<'draft'>['draft'];
@@ -103,6 +108,7 @@ export function rehearsalState(events: RehearsalEvent[] = []) {
   let head: Event<'draft'>['draft'] | undefined;
   const assets: Handoff[] = [];
   for (const item of events) {
+    if (item.kind === 'orchestration') continue;
     if (item.kind === 'review') review = item;
     else if (item.kind === 'draft') {
       draft = item;
@@ -154,21 +160,15 @@ export function sameModel(a: Model | undefined, b: Model) {
   );
 }
 
-export function fitIsCurrent(asset: Handoff, head?: { revisionId: string }) {
-  return (
-    !!asset.fit &&
-    !!head &&
-    (asset.fit.assembled?.revisionId ?? asset.fit.rehearsalRevisionId) ===
-      head.revisionId
-  );
-}
-
 export function workflowError(
   events: RehearsalEvent[],
   item: RehearsalEvent,
   inputRevision: number,
   hasBrief: boolean,
 ) {
+  if (item.kind === 'orchestration') return 'Use orchestration validation.';
+  if (events.some(({ kind }) => kind === 'orchestration'))
+    return 'This scene now uses orchestration; legacy records are historical.';
   const { review, draft, head, assets } = rehearsalState(events);
   if (!hasBrief || events.some((event) => event.eventId === item.eventId))
     return 'A saved brief and unused event ID are required.';
@@ -250,7 +250,14 @@ export function workflowError(
   } else if (!sameModel(asset.candidate?.model, item.model))
     return 'The Foundry candidate changed.';
   else if (item.kind === 'candidate-review') {
-    if (asset.acceptance)
+    if (item.ownerOverride) {
+      if (
+        item.verdict !== 'accepted' ||
+        asset.acceptance?.verdict !== 'needs-revision' ||
+        asset.acceptance.eventId !== item.ownerOverride.rejectionEventId
+      )
+        return 'An owner override must accept the exact candidate and cite its current rejection.';
+    } else if (asset.acceptance)
       return 'This candidate already has a review. Publish a new revision to resolve a rejection.';
   } else if (
     (item.capabilityBlocker && item.verdict !== 'rehearsal-issue') ||
@@ -267,31 +274,4 @@ export function workflowError(
         )))
   )
     return 'Fit evidence must target the accepted model and current rehearsal; any assembly must be a new revision in the same library.';
-}
-
-export function assetNextAction(asset: Handoff, head?: { revisionId: string }) {
-  if (
-    !asset.candidate ||
-    asset.acceptance?.verdict === 'needs-revision' ||
-    asset.fit?.verdict === 'model-defect'
-  )
-    return 'foundry';
-  if (asset.acceptance?.verdict !== 'accepted') return 'candidate-review';
-  if (asset.fit?.verdict === 'rehearsal-issue' && fitIsCurrent(asset, head))
-    return asset.fit.capabilityBlocker
-      ? 'capability-blocked'
-      : 'rehearsal-correction';
-  return 'fit';
-}
-
-export function sceneNextAction(
-  hasBrief: boolean,
-  inputRevision: number,
-  state: ReturnType<typeof rehearsalState>,
-) {
-  if (!hasBrief) return 'rehearsal';
-  if (state.review?.inputRevision !== inputRevision) return 'rehearsal-review';
-  if (state.review.blockout === 'needs-revision') return 'rehearsal';
-  if (state.draft?.reviewId !== state.review.eventId)
-    return 'rehearsal-handoff';
 }

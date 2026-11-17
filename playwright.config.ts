@@ -16,6 +16,8 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       SCENE_LOOM_PORT: '4319',
+      MESH_FOUNDRY_DATA_DIR:
+        '/private/tmp/scene-loom-browser-tests/foundry-fixture',
       SCENE_LOOM_DATA_DIR: '/private/tmp/scene-loom-browser-tests',
     },
     timeout: 30000,
