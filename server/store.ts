@@ -282,7 +282,8 @@ export class Store extends EventEmitter {
           ({ result: _result, ...draft }) => draft,
         ),
         scenes: source.scenes.map(
-          ({ rehearsalEvents: _events, ...scene }) => scene,
+          ({ rehearsalEvents: _events, statusReport: _status, ...scene }) =>
+            scene,
         ),
         development: undefined,
         rehearsalInputRevision: 0,
@@ -661,7 +662,19 @@ export class Store extends EventEmitter {
       const developmentOnly =
         batch.operations.length === 1 &&
         batch.operations[0].type.startsWith('development.');
-      const workflowOnly = rehearsalOnly || developmentOnly;
+      const statusOnly =
+        batch.operations.length === 1 &&
+        batch.operations[0].type === 'scene.status.record';
+      const workflowOnly = rehearsalOnly || developmentOnly || statusOnly;
+      if (
+        !statusOnly &&
+        batch.operations.some((op) => op.type === 'scene.status.record')
+      )
+        fail(
+          'MIXED_SCENE_STATUS_BATCH',
+          'Record scene status separately from other changes.',
+          409,
+        );
       if (
         !developmentOnly &&
         batch.operations.some((op) => op.type.startsWith('development.'))
@@ -815,6 +828,17 @@ export class Store extends EventEmitter {
             });
           }
           slice.sceneIds.forEach((id) => affected.add(id));
+          continue;
+        }
+        if (op.type === 'scene.status.record') {
+          const scene = next.scenes.find(({ id }) => id === op.id);
+          if (!scene) fail('NOT_FOUND', 'Scene does not exist.', 404);
+          scene.statusReport = {
+            ...op.report,
+            checkedAt: new Date().toISOString(),
+            inputRevision: p.rehearsalInputRevision ?? p.contentRevision,
+          };
+          affected.add(op.id);
           continue;
         }
         if (op.type === 'rehearsal.record') {

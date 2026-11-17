@@ -78,14 +78,15 @@ Replace `asset_imported` below with the returned image ID. Read the project firs
 
 Supported operations:
 
-| Operation           | Fields                                                                    |
-| ------------------- | ------------------------------------------------------------------------- |
-| `scene.create`      | `scene`; optional `placement: { "nearSceneId": "existing_scene" }`        |
-| `scene.patch`       | `id`, `changes` containing only intended scene fields (excluding ID)      |
-| `scene.delete`      | `id`                                                                      |
-| `connection.create` | `connection: { "id", "sourceSceneId", "targetSceneId", "label"? }`        |
-| `connection.patch`  | `id`, `changes` containing only intended connection fields (excluding ID) |
-| `connection.delete` | `id`                                                                      |
+| Operation             | Fields                                                                                                                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scene.create`        | `scene`; optional `placement: { "nearSceneId": "existing_scene" }`                                                                                                                                       |
+| `scene.patch`         | `id`, `changes` containing only intended scene fields (excluding ID)                                                                                                                                     |
+| `scene.status.record` | `id`, `report` with `foundry`, `rehearsal`, `implementation`, `next` summaries; must be the only operation in its batch. Shown under "Where you left off"; does not change workflow state or reopen work |
+| `scene.delete`        | `id`                                                                                                                                                                                                     |
+| `connection.create`   | `connection: { "id", "sourceSceneId", "targetSceneId", "label"? }`                                                                                                                                       |
+| `connection.patch`    | `id`, `changes` containing only intended connection fields (excluding ID)                                                                                                                                |
+| `connection.delete`   | `id`                                                                                                                                                                                                     |
 
 Scene creation requires the fields shown above except `mainAssetId`, which may be omitted or set to `null` for a text-only scene. Pass an empty `supportingAssetIds` array when there are no supporting images. In a patch, omission preserves the existing image, an imported ID attaches or replaces it, and `null` clears it. IDs accept letters, numbers, hyphens, underscores, begin with a letter/number, and are at most 96 characters. A batch accepts up to 1000 operations within a 4 MB request body. Unknown input fields are rejected.
 

@@ -1558,3 +1558,31 @@ kbd {
   width: auto;
   margin-inline: 0;
 }
+
+.scene-status-resync {
+  margin-block: 12px;
+  overflow-wrap: anywhere;
+}
+.scene-status-resync > button {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-hover);
+  color: var(--accent);
+  text-align: left;
+}
+.scene-status-resync details {
+  margin-top: 8px;
+}
+.scene-status-resync summary {
+  cursor: pointer;
+  color: var(--soft);
+}
+.scene-status-resync dt {
+  margin-top: 8px;
+  font-weight: 650;
+}
+.scene-status-resync dd {
+  margin-inline-start: 0;
+}

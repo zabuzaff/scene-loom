@@ -135,6 +135,43 @@ export function ExternalRevision({
   );
 }
 
+export function SceneStatusResync({ data }: { data: CardData }) {
+  const { scene, rehearsalInputRevision } = data;
+  return (
+    <div className="scene-status-resync">
+      <button
+        type="button"
+        className="studio-copy-action nodrag"
+        onClick={() => data.copy(scene.id, 'resync-status')}
+      >
+        Copy scene status resync prompt
+      </button>
+      {scene.statusReport && (
+        <details>
+          <summary>
+            Last resync ·{' '}
+            <time dateTime={scene.statusReport.checkedAt}>
+              {new Date(scene.statusReport.checkedAt).toLocaleString()}
+            </time>
+            {scene.statusReport.inputRevision !== rehearsalInputRevision &&
+              ' · Storyboard inputs changed'}
+          </summary>
+          <dl>
+            <dt>Foundry</dt>
+            <dd>{scene.statusReport.foundry}</dd>
+            <dt>Rehearsal</dt>
+            <dd>{scene.statusReport.rehearsal}</dd>
+            <dt>Implementation</dt>
+            <dd>{scene.statusReport.implementation}</dd>
+            <dt>Next</dt>
+            <dd>{scene.statusReport.next}</dd>
+          </dl>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function GameResume({ data }: { data: CardData }) {
   const { scene, rehearsalInputRevision, development } = data;
   const { sync, current, next } = orchestrationState(
@@ -182,6 +219,7 @@ export function GameResume({ data }: { data: CardData }) {
           checkpoint.planRevision === development?.planRevision && (
             <p>Resume · {checkpoint.checkpoint.resume}</p>
           )}
+        <SceneStatusResync data={data} />
       </div>
       <dl className="game-progress">
         {data.rehearsalEnabled && (

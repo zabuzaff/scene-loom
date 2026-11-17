@@ -568,6 +568,32 @@ test('game card syncs, approves and independently reviews the exact placeholder 
     accepted = true;
     expect((await review('draft-2', 'approved')).ok).toBe(true);
     await modal
+      .getByRole('button', { name: 'Copy scene status resync prompt' })
+      .click();
+    const statusPrompt = await clipboard();
+    expect(statusPrompt).toContain(`scene read ${id} ${sceneId}`);
+    expect(statusPrompt).toContain('scene.status.record');
+    expect(statusPrompt).toContain(
+      'Inspect Foundry, Rehearsal and the target implementation read-only',
+    );
+    const inputRevision = read().rehearsalInputRevision;
+    publish({
+      type: 'scene.status.record',
+      id: sceneId,
+      report: {
+        foundry: 'Gate prototype verified in the linked library.',
+        rehearsal: `Approved draft ${revised}.`,
+        implementation: 'Gate selection verified on /garden.',
+        next: 'Review the arrival view.',
+      },
+    });
+    expect(read().rehearsalInputRevision).toBe(inputRevision);
+    await modal.getByText('Last resync', { exact: false }).click();
+    await expect(
+      modal.getByText('Gate selection verified on /garden.'),
+    ).toBeVisible();
+    await expect(modal.getByText('Storyboard inputs changed')).toHaveCount(0);
+    await modal
       .getByRole('button', { name: 'Copy game implementation handoff' })
       .click();
     expect(await clipboard()).toContain(revised);

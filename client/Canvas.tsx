@@ -29,6 +29,7 @@ import {
   api,
   RequestError,
   scenePrompt,
+  sceneStatusPrompt,
   assetGenerationPrompt,
   developmentPrompt,
   orchestrationActions,
@@ -192,6 +193,7 @@ function CanvasInner({
         | 'continue'
         | 'edit'
         | 'assets'
+        | 'resync-status'
         | OrchestrationCopyAction,
       targetKey?: string,
       sliceId?: string,
@@ -210,6 +212,13 @@ function CanvasInner({
       )
         return;
       try {
+        if (action === 'resync-status') {
+          await navigator.clipboard.writeText(sceneStatusPrompt(info, p, s));
+          report(
+            'Scene status prompt copied. Paste it into your project agent.',
+          );
+          return;
+        }
         if (action === 'development') {
           const target = sceneDevelopment(p.development, id, sliceId);
           if (

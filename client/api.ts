@@ -171,6 +171,22 @@ export const orchestrationActions: Record<
   },
 };
 
+export function sceneStatusPrompt(
+  info: AgentInfo,
+  project: ProjectData,
+  scene: SceneData,
+) {
+  return `${interfacePrompt(info)}${storyboardReference(info, project, scene.id)}Scene: ${scene.title} (${scene.id})
+
+Read the exact storyboard and scene first, then resync the observed status of this scene. Inspect Foundry, Rehearsal and the target implementation read-only. Resolve the intended repository from my direction or the current workspace; the Loom checkout is tooling. If a source cannot be identified or reached, say what is unverified and continue with the others.
+- Foundry: verify the linked library, selected asset pins and exact current acceptance. Report superseded or missing revisions and whether the recorded sync is current.
+- Rehearsal: inspect the active plan, approvals, exact recorded draft and its live head for the recorded plan tuple, plus the review. Distinguish stale Loom inputs from missing or superseded work. Do not guess a datastore or treat a historical approval as current.
+- Implementation: identify the repository and revision or working-tree state, scene route or entry point, and what is actually implemented and verified. Inspect the running scene where available. Distinguish observed functionality from untested code and from an unmapped development slice. Cite concrete files, revisions, routes or checks.
+- Next: identify the smallest action that advances this scene, including any decision that needs the owner.
+
+Save the four concise evidence-backed summaries via one scene.status.record operation for this scene ID. Its report has foundry, rehearsal, implementation and next string fields. Read schema batch, use the exact storyboard ID and observed content revision, dry-run and apply with a unique request ID, then verify with scene read. On a content conflict, reread and recheck affected evidence before retrying. The report appears under Where you left off. Preserve the storyboard intent, pins, approvals and checkpoints. Do not modify external tools, redo workflow stages or mark a slice verified. Report any formal workflow reconciliation that still needs a separate action.`;
+}
+
 export function orchestrationPrompt(
   info: AgentInfo,
   project: ProjectData,

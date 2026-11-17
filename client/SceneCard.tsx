@@ -30,6 +30,7 @@ import {
   DevelopmentDetails,
   ExternalRevision,
   GameResume,
+  SceneStatusResync,
 } from './SceneProgress';
 
 export type CardData = {
@@ -50,7 +51,12 @@ export type CardData = {
   copy: (
     id: string,
     action:
-      'development' | 'continue' | 'edit' | 'assets' | OrchestrationCopyAction,
+      | 'development'
+      | 'continue'
+      | 'edit'
+      | 'assets'
+      | 'resync-status'
+      | OrchestrationCopyAction,
     requirementId?: string,
     sliceId?: string,
     report?: (message: string) => void,
@@ -94,6 +100,7 @@ export const SceneCard = memo(function SceneCard({
       {data.production && data.rehearsalEnabled && (
         <RehearsalActions data={detailData} />
       )}
+      {!data.production && <SceneStatusResync data={detailData} />}
       <DevelopmentDetails data={detailData} />
       <p>{data.scene.description}</p>
       {data.scene.notes && (

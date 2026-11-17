@@ -38,6 +38,13 @@ const RehearsalBrief = z.strictObject({
     .max(100),
   gaps: z.array(BriefText).max(50),
 });
+const SceneStatusReport = z.strictObject({
+  foundry: BriefText,
+  rehearsal: BriefText,
+  implementation: BriefText,
+  next: BriefText,
+});
+
 export const Scene = z.strictObject({
   id: Id,
   title: z.string().trim().min(1).max(200),
@@ -57,6 +64,10 @@ export const Scene = z.strictObject({
     .optional(),
   rehearsalBrief: RehearsalBrief.nullable().optional(),
   rehearsalEvents: z.array(RehearsalEvent).optional(),
+  statusReport: SceneStatusReport.extend({
+    checkedAt: z.iso.datetime(),
+    inputRevision: z.number().int().nonnegative(),
+  }).optional(),
 });
 export const Connection = z.strictObject({
   id: Id,
@@ -163,7 +174,11 @@ export const Project = z.strictObject({
   assets: z.record(Id, Asset),
   positions: z.record(Id, Point),
 });
-const ScenePatch = Scene.omit({ id: true, rehearsalEvents: true })
+const ScenePatch = Scene.omit({
+  id: true,
+  rehearsalEvents: true,
+  statusReport: true,
+})
   .partial()
   .refine(
     (v) => Object.keys(v).length > 0,
@@ -204,13 +219,18 @@ export const Operation = z.discriminatedUnion('type', [
   }),
   z.strictObject({
     type: z.literal('scene.create'),
-    scene: Scene.omit({ rehearsalEvents: true }),
+    scene: Scene.omit({ rehearsalEvents: true, statusReport: true }),
     placement: z.strictObject({ nearSceneId: Id }).optional(),
   }),
   z.strictObject({
     type: z.literal('scene.patch'),
     id: Id,
     changes: ScenePatch,
+  }),
+  z.strictObject({
+    type: z.literal('scene.status.record'),
+    id: Id,
+    report: SceneStatusReport,
   }),
   z.strictObject({ type: z.literal('scene.delete'), id: Id }),
   z.strictObject({
