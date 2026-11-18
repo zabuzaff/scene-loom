@@ -64,6 +64,13 @@ export const OrchestrationRecord = base.extend({
       feedback: note.optional(),
     }),
     z.strictObject({
+      stage: z.literal('draft'),
+      builder: note,
+      url: z.string().regex(/^http:\/\/127\.0\.0\.1:\d{4,5}$/),
+      draftId: digest,
+      scenarioId: id,
+    }),
+    z.strictObject({
       stage: z.literal('publication'),
       builder: note,
       approvalId: id,
@@ -90,8 +97,7 @@ export type OrchestrationRecord = z.infer<typeof OrchestrationRecord>;
 type RecordAt<S> = Extract<OrchestrationRecord['record'], { stage: S }> & {
   eventId: string;
 };
-export type OrchestrationAction =
-  'sync' | 'plan' | 'publish' | 'review-draft' | 'handoff';
+export type OrchestrationAction = 'sync' | 'plan' | 'publish' | 'handoff';
 
 export function orchestrationState(
   events: { kind: string }[] = [],
@@ -100,7 +106,7 @@ export function orchestrationState(
   let sync: RecordAt<'sync'> | undefined;
   let plan: RecordAt<'plan'> | undefined;
   let decision: RecordAt<'decision'> | undefined;
-  let draft: RecordAt<'publication'> | undefined;
+  let draft: RecordAt<'publication'> | RecordAt<'draft'> | undefined;
   let review: RecordAt<'draft-review'> | undefined;
   for (const event of events) {
     if (event.kind !== 'orchestration') continue;
@@ -116,8 +122,8 @@ export function orchestrationState(
         break;
       case 'decision':
         decision = { ...record, eventId };
-        draft = review = undefined;
         break;
+      case 'draft':
       case 'publication':
         draft = { ...record, eventId };
         review = undefined;
@@ -128,21 +134,35 @@ export function orchestrationState(
     }
   }
   const current = sync?.inputRevision === inputRevision;
-  const next: OrchestrationAction | 'decide' | 'resolve' =
+  // The owner agrees to a plan in chat, and accepts the draft in Rehearsal.
+  // Older decision, publication and review records stay as history only.
+  const next: OrchestrationAction | 'resolve' =
     !current || !sync
       ? 'sync'
       : sync.entries.some(({ required, source }) => required && !source)
         ? 'resolve'
-        : !plan ||
-            decision?.verdict === 'changes-requested' ||
-            review?.verdict === 'plan-changes-requested'
+        : !plan
           ? 'plan'
-          : !decision
-            ? 'decide'
-            : !draft || review?.verdict === 'changes-requested'
-              ? 'publish'
-              : !review
-                ? 'review-draft'
-                : 'handoff';
-  return { sync, plan, decision, draft, review, next, current };
+          : !draft
+            ? 'publish'
+            : 'handoff';
+  const draftId = draft
+    ? draft.stage === 'draft'
+      ? draft.draftId
+      : draft.revisionId
+    : undefined;
+  const draftUrl = draft
+    ? `${draft.stage === 'draft' ? draft.url : `http://127.0.0.1:${draft.port}`}/revision/${draftId}/${draft.scenarioId}`
+    : undefined;
+  return {
+    sync,
+    plan,
+    decision,
+    draft,
+    review,
+    next,
+    current,
+    draftId,
+    draftUrl,
+  };
 }

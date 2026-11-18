@@ -151,23 +151,19 @@ export const orchestrationActions: Record<
   },
   plan: {
     label: 'Copy scene orchestrator planner prompt',
-    help: 'Paste into your Scene Loom agent. It saves a proposed placement and behavior plan here for your approval.',
+    help: 'Paste into your Scene Loom agent. It proposes a placement and behavior plan in chat and saves it here once you agree.',
   },
   publish: {
     label: 'Copy rehearsal draft prompt',
-    help: 'Paste into your Rehearsal builder chat. It publishes or corrects a placeholder draft and links the exact revision here.',
-  },
-  'review-draft': {
-    label: 'Copy rehearsal draft review prompt',
-    help: 'Paste into a fresh reviewer chat. Inspect the linked draft and record findings here. Approve the checked revision in Rehearsal when it passes.',
+    help: 'Paste into your Rehearsal builder chat. It builds this scene’s single placeholder draft in Rehearsal and links it here. Review and accept it in Rehearsal.',
   },
   'review-game': {
     label: 'Copy in-game scene review prompt',
     help: 'Paste into a fresh reviewer chat in your game project. Optionally add the 3D prototype name to use as a scale reference.',
   },
   handoff: {
-    label: 'Copy game implementation handoff',
-    help: 'Paste into your game project chat. It uses the approved plan and draft to carry placements and runtime checks into the game.',
+    label: 'Copy start implementation prompt',
+    help: 'Paste into your game project chat after you accept the draft in Rehearsal. It implements the scene and marks the card implemented when the behavior roughly matches.',
   },
 };
 
@@ -192,42 +188,20 @@ export function orchestrationPrompt(
   project: ProjectData,
   scene: SceneData,
   action: OrchestrationCopyAction,
-  staleFoundryPlanId?: string,
 ) {
   const revision = project.rehearsalInputRevision ?? project.contentRevision;
-  const { sync, plan, decision, draft, review, next } = orchestrationState(
+  const { sync, plan, draft, next, draftUrl } = orchestrationState(
     scene.rehearsalEvents,
     revision,
   );
-  const recovery =
-    action === 'sync' &&
-    (next === 'resolve' ||
-      (next === 'decide' &&
-        plan?.eventId === staleFoundryPlanId &&
-        !!staleFoundryPlanId));
-  if (
-    action !== next &&
-    !(action === 'review-game' && next === 'handoff') &&
-    !recovery
-  )
+  if (action !== next && !(action === 'review-game' && next === 'handoff'))
     return;
   const write =
-    'Read schema batch. Record one rehearsal.record event with kind orchestration, the scene ID, a unique event ID, current afterEventId, expectedContentRevision and a unique request ID. Dry-run and apply. On conflict reread both apps, reconcile exact IDs and retry only if work still targets the current inputs. If Foundry acceptance changed, persist a fresh exact sync preview with its gaps before continuing. Never retarget prior approval or review.';
-  const planTuple =
-    plan && decision?.verdict === 'approved'
-      ? {
-          storyboardId: project.id,
-          sceneId: scene.id,
-          planId: plan.eventId,
-          planRevision: plan.eventId,
-          approvalId: decision.eventId,
-        }
-      : undefined;
+    'Read schema batch. Record one rehearsal.record event with kind orchestration, the scene ID, a unique event ID, current afterEventId, expectedContentRevision and a unique request ID. Dry-run and apply. On conflict reread both apps, reconcile exact IDs and retry only if work still targets the current inputs. If Foundry acceptance changed, persist a fresh exact sync preview with its gaps before continuing. ';
   const details = {
     sync: `Use ${info.cli} scene accepted-assets ${project.id} ${scene.id} for the exact linked library and live model acceptance. Compare with the selected scene assets. If no selection is saved, ask the owner to confirm the exact selection and save selectedAssets via a separate scene.patch, using [] when the scene needs none. Reread before syncing. Save stage sync with the exact preview (including issues), preserving the selection and existing pins. If an active legacy rehearsal requires retirement, obtain explicit owner approval before setting legacyReset: true. Report the verified assets and specific gaps shown on this card. Keep Foundry and Rehearsal read-only.`,
-    plan: `Use the current storyboard scene intent, vision, references and exact synced models below. Save stage plan with syncId, your planner identity, proposed groups and stable pieces, meter/Y-up center positions, base dimensions, scale and XYZ rotations in radians, camera or traversal, interaction and animation cues, references and concrete checks. Address saved owner feedback and any plan-changes-requested draft findings. Tell the owner what to preview and decide on this card. Wait for their approval here before any draft publication.`,
-    publish: `Read Scene Rehearsal docs/PLAN_DRAFTS.md. Verify the approved plan tuple below immediately before publishing to the exact intended canonical library (use the historical library if recorded). List planHeads; start at parent null for a new tuple, or use the recorded digest as parent when correcting findings. Publish a v3 placeholder-only draft using the approved IDs, transforms and intended behavior cues. Carry unsupported runtime checks forward. Read back the digest, tuple, parent and scenario before stage publication writeback. Include your builder identity. Carry each plan behavior as an event intent, each camera or traversal description as an event intent with a camera or route, and the plan checks verbatim in pendingChecks. On a Loom conflict reconcile the current published digest and its actual parent. Verify its same-plan ancestry back to Loom’s last recorded digest (or the root of the plan) before considering another publication.`,
-    'review-draft': `Work in a fresh independent session. Open the exact recorded Rehearsal digest and inspect placements, stable piece IDs, scenario camera or traversal and intended behavior cues against the approved plan. Record specific findings. For issues, pin feedback to this exact digest in Rehearsal and write stage draft-review with changes-requested for draft corrections or plan-changes-requested if the approved plan itself must change. For a pass, show what was checked to the owner and have them approve this digest in Rehearsal. Recheck the live accepted-assets preview against the saved manifest before writing approval. If acceptance changed, save the new sync and its gaps instead. Read back final approval and include the exact draftReview.checked text in stage draft-review findings. Use the publication event ID and your reviewer identity, distinct from the planner and builder. The result appears on this card.`,
+    plan: `Use the current storyboard scene intent, vision, references and exact synced models below. If the game already implements this scene, inspect it and base the plan on what exists. Propose groups and stable pieces, meter/Y-up center positions, base dimensions, scale and XYZ rotations in radians, camera or traversal, interaction and animation cues, references and concrete checks, and discuss them with me in chat. When I agree, save stage plan with syncId and your planner identity. No separate approval step is needed.`,
+    publish: `Use the Scene Rehearsal CLI (npm --silent run cli -- ...) from its checkout. It finds or starts the local service itself, so set no environment variables, ports or data directories. Read its docs/PLAN_DRAFTS.md. Publish one v3 placeholder-only draft for this scene using plan fields storyboardId ${project.id} and sceneId ${scene.id}, with the saved plan's IDs, transforms and behavior cues. Publishing again for the same scene overwrites the same draft, so use it for every correction and send no parent. Carry each plan behavior as an event intent, each camera or traversal description as an event intent with a camera or route, and the plan checks verbatim in pendingChecks. Read the draft back, then save stage draft with your builder identity, the Rehearsal url, the draftId (digest) and a scenarioId. Tell me to inspect it in Rehearsal. I review and accept the draft there. If I paste corrections from a reviewer, update the same draft and tell me what changed.`,
     'review-game': `Independently review the implemented game scene. Before inspecting the game, read the current Loom storyboard and scene. Verify that the captured approval and plan tuple, approved draft digest, and pinned asset manifest still match the active handoff. If the handoff is no longer approved or any of those inputs changed, stop and ask for a fresh in-game scene review prompt from the card. Use the verified plan, creative reference and stable piece IDs. Resolve the exact running build, route and repository revision or working-tree state, then open the actual scene. Compare the verified pins with the models actually loaded. Treat the Rehearsal draft as placement intent and inspect the game for evidence.
 
 If the owner supplies a 3D prototype name below, identify its exact loaded revision and measure its world-space dimensions, including height, after in-game transforms. State the units and any pose or accessory limits. Record the measured size separately from any owner-approved baseline. If the field is blank or the reference cannot be resolved, continue the review and flag scale judgments that need a reference. Evaluate functional clearances separately from visual proportions.
@@ -237,10 +211,9 @@ Use whatever controls the running game provides. Start from the normal arrival v
 Exercise camera behavior and transitions against the reviewed scene’s own requirements. Mark behavior that cannot be exercised as pending and state what prevented verification.
 
 Return a short verdict and prioritized findings numbered SS1, SS2, and so on. In both the report and the paste-ready correction prompt, record the exact running build ID and reviewed route. Include the repository revision and any relevant working-tree changes when available. Report any build identification limits. Include the scale reference and its measurements when available, label the baseline as approved, proposed, or unverified, and identify any judgments awaiting a reference. State any missing evidence and tell the builder to verify the reviewed scene state and baseline before applying findings. For each finding, show an annotated screenshot inline and link both the annotated image and the original capture. Identify the exact scene object and loaded model revision when available, describe the observed defect, include verified measurements where useful, and state the correction and a measurable pass condition. Flag gaps in evidence. Finish with one paste-ready correction prompt for the game builder that cites the findings and evidence. Route placement, rotation or uniform scale adjustments to the game builder. For issues that require geometry changes, flag the issue for the asset workflow with a targeted Foundry instruction with the exact source revision, measured targets, what to preserve and how to verify the export in context. Keep the review read-only. Report the review in chat and leave the scene and assets untouched.`,
-    handoff: `Read the exact final approved package and Loom records. Verify live accepted-assets against the saved manifest before using any assets. If the required pins changed, record a fresh sync and stop until the scene has an approved handoff again. Verify the approved digest is still the current Rehearsal plan head and the captured Loom tuple is still active. If the library has advanced, stop implementation, reconcile the actual head publication and its same-plan ancestry against the last recorded digest and approval, and return it for independent review. If Loom state changed, use the current card action. Carry the plan, transforms, stable piece IDs, accepted Foundry revisions, references, review findings and pending runtime checks into this scene's game implementation. Implement model placement, collision, selection and final animation in the game, then verify there. Preserve historical rehearsal evidence and report the runtime results in your implementation chat.`,
+    handoff: `Read this scene's Rehearsal draft (draft link on this card) through the Scene Rehearsal CLI, which needs no setup. Confirm it carries a final approval (approvals contains kind final); if not accepted, stop and tell me to review and accept it in Rehearsal. Carry the plan, transforms, stable piece IDs, accepted Foundry revisions, references and pending runtime checks into this scene's game implementation, or continue the existing implementation if one exists. Implement model placement, collision, selection and final animation in the game. When the implemented behavior in code reasonably matches this scene card's scope, mark the card implemented, using the development checkpoint flow if a development map exists and otherwise scene.status.record. A light check that the code relates to the scene is enough: deep testing is not needed. Say what you did not check.`,
   };
-  const context =
-    action === 'sync' ? {} : { sync, plan, decision, planTuple, draft, review };
+  const context = action === 'sync' ? {} : { sync, plan, draft, draftUrl };
   return `${interfacePrompt(info)}${storyboardReference(info, project, scene.id)}Scene: ${scene.title} (${scene.id})
 Intent: ${scene.description}
 Creative notes: ${scene.notes}
@@ -424,12 +397,11 @@ THE WORKFLOW (use this as your map)
 3. Asset generation (Foundry). A scene's "Copy asset-generation prompt" reuses or creates concepts in the shared library. Revisions go sketch, then study, then model. Agents never accept revisions. Only I accept an asset, in the Mesh Foundry browser, after visual review.
 4. Per-scene orchestration (Loom card, in this order). The card shows the next action and the matching prompt:
    a. sync: verify live Foundry acceptance for the scene's selected assets and save the manifest. If a required asset has no accepted source, the state is "resolve": fix that in Foundry first, then sync again.
-   b. plan: an agent proposes pieces, positions, camera or traversal, behavior cues and checks. Wait for my decision.
-   c. decide: I approve the plan or request changes on the Loom card.
-   d. publish: a builder agent publishes a placeholder draft to Scene Rehearsal for the approved plan.
-   e. review-draft: a fresh, independent reviewer inspects the draft and records findings. If it passes, I approve that exact digest in the Scene Rehearsal browser. Findings can send me back to publish (draft fixes) or plan (plan change).
-   f. handoff: the approved plan and draft go to the game project chat for implementation.
-   g. review-game: a fresh reviewer checks the running game against the approved intent.
+   b. plan: an agent proposes pieces, positions, camera or traversal, behavior cues and checks in chat. I agree in chat, then it saves the plan. There is no separate approval step.
+   c. publish: a builder agent builds the scene's single placeholder draft in Scene Rehearsal and links it on the card. Rehearsal needs no environment variables, ports or paths.
+   d. I inspect the draft in Rehearsal and use its Copy review prompt in a new chat. The reviewer proposes corrections, I send them to the builder chat, and the same draft is updated. When it is right I click Accept draft in Rehearsal.
+   e. handoff: Copy start implementation prompt goes to the game project chat. It implements the scene and marks the card implemented when the behavior roughly matches. No deep testing is needed.
+   f. review-game: a fresh reviewer checks the running game against the intent (optional).
    Any change to the storyboard content or to Foundry acceptance can make a sync stale and restart the chain. Say so when it matters.
 5. Repository and development prompts (Loom project actions) resync verified screenshots and plan development slices from the storyboard.
 

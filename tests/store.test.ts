@@ -1354,3 +1354,151 @@ test('legacy reset previews and appends one verified manifest without a snapshot
     hasCode('STALE_REHEARSAL'),
   );
 });
+
+test('plan then draft link needs no approval and rejects retired stages', async (t) => {
+  const { root, store, scene, batch } = await fixture(t);
+  const workspace = join(root, 'foundry');
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(workspace);
+  const foundryDir = process.env.MESH_FOUNDRY_DATA_DIR;
+  process.env.MESH_FOUNDRY_DATA_DIR = workspace;
+  t.after(() => {
+    if (foundryDir === undefined) delete process.env.MESH_FOUNDRY_DATA_DIR;
+    else process.env.MESH_FOUNDRY_DATA_DIR = foundryDir;
+  });
+  await writeFile(
+    join(workspace, 'runtime.json'),
+    JSON.stringify({ url: 'http://127.0.0.1:4329', token: 'fixture' }),
+  );
+  const { createHash } = await import('node:crypto');
+  const libraryId =
+    'scene-loom-' + createHash('sha256').update('test').digest('hex');
+  const digest = 'a'.repeat(64);
+  const url = 'http://127.0.0.1:4331';
+  const previous = process.env.SCENE_LOOM_REHEARSAL_URL;
+  process.env.SCENE_LOOM_REHEARSAL_URL = url;
+  t.after(() => {
+    if (previous === undefined) delete process.env.SCENE_LOOM_REHEARSAL_URL;
+    else process.env.SCENE_LOOM_REHEARSAL_URL = previous;
+  });
+  let draftKey = 'test/office';
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const path = new URL(String(input)).pathname;
+    if (path === '/api/library')
+      return Response.json({ drafts: [{ key: draftKey, digest }] });
+    if (path === '/api/revision/' + digest)
+      return Response.json({
+        digest,
+        scene: {
+          version: 3,
+          plan: { storyboardId: 'test', sceneId: 'office' },
+          scenarios: [{ id: 'arrival' }],
+        },
+      });
+    return Response.json({
+      id: libraryId,
+      assets: [],
+      accepted: {},
+      acceptance: [],
+      revisions: [],
+    });
+  });
+  await store.settings('test', { meshFoundryEnabled: true });
+  await store.apply(
+    batch([
+      {
+        type: 'scene.create',
+        scene: { ...scene('office'), selectedAssets: [] },
+      },
+    ]),
+  );
+  const record = (
+    afterEventId: string | null,
+    eventId: string,
+    inner: Record<string, unknown>,
+    revision: number,
+  ) =>
+    store.apply(
+      batch(
+        [
+          {
+            type: 'rehearsal.record',
+            id: 'office',
+            afterEventId,
+            event: {
+              kind: 'orchestration',
+              eventId,
+              record: inner,
+            } as never,
+          },
+        ],
+        revision,
+        eventId,
+      ),
+    );
+  const revision = async () => (await store.read('test')).contentRevision;
+  const input = (await store.read('test')).rehearsalInputRevision!;
+  await record(
+    null,
+    'sync',
+    {
+      stage: 'sync',
+      inputRevision: input,
+      libraryId,
+      entries: [],
+    },
+    await revision(),
+  );
+  await record(
+    'sync',
+    'plan',
+    {
+      stage: 'plan',
+      syncId: 'sync',
+      planner: 'Planner',
+      plan: {
+        intent: 'Office',
+        pieces: [
+          {
+            id: 'desk',
+            label: 'Desk',
+            position: [0, 0, 0],
+            size: [1, 1, 1],
+            scale: [1, 1, 1],
+            rotation: [0, 0, 0],
+            behavior: 'Static',
+          },
+        ],
+        cameraOrTraversal: ['Pan'],
+        checks: ['Fits'],
+        references: [],
+      },
+    },
+    await revision(),
+  );
+  const draft = {
+    stage: 'draft',
+    builder: 'Builder',
+    url,
+    draftId: digest,
+    scenarioId: 'arrival',
+  };
+  await assert.rejects(
+    record(
+      'plan',
+      'decision',
+      { stage: 'decision', planId: 'plan', verdict: 'approved' },
+      await revision(),
+    ),
+    hasCode('LEGACY_STAGE'),
+  );
+  draftKey = 'test/other';
+  await assert.rejects(
+    record('plan', 'draft', draft, await revision()),
+    hasCode('STALE_REHEARSAL'),
+  );
+  draftKey = 'test/office';
+  await record('plan', 'draft', draft, await revision());
+  const events = (await store.read('test')).scenes[0].rehearsalEvents!;
+  assert.equal(events.at(-1)?.eventId, 'draft');
+});

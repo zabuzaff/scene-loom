@@ -160,30 +160,6 @@ export async function createApp(options: {
       await store.importAsset((req.params as { id: string }).id, path, kind),
     );
   });
-  app.post('/api/projects/:id/plan-decision', async (req) => {
-    if (
-      !req.headers.origin ||
-      req.headers.authorization ||
-      req.headers['sec-fetch-site'] !== 'same-origin'
-    )
-      fail(
-        'OWNER_DECISION_REQUIRED',
-        'Decide on the plan in the Scene Loom card.',
-        403,
-      );
-    const batch = Batch.parse(req.body);
-    const { id } = req.params as { id: string };
-    const op = batch.operations[0];
-    if (
-      batch.projectId !== id ||
-      batch.operations.length !== 1 ||
-      op.type !== 'rehearsal.record' ||
-      op.event.kind !== 'orchestration' ||
-      op.event.record.stage !== 'decision'
-    )
-      fail('INVALID_DECISION', 'Submit one plan decision for this storyboard.');
-    return ok(await store.apply(batch));
-  });
   app.post('/api/projects/:id/apply', async (req) => {
     const id = Id.parse((req.params as { id: string }).id);
     if ((req.body as { projectId?: string })?.projectId !== id)
@@ -199,7 +175,7 @@ export async function createApp(options: {
     )
       fail(
         'OWNER_DECISION_REQUIRED',
-        'Decide on the plan in the Scene Loom card.',
+        'Plan decisions are retired. Agree to the plan in chat and save the plan.',
         403,
       );
     return ok(

@@ -18,6 +18,8 @@ export default defineConfig({
       SCENE_LOOM_PORT: '4319',
       MESH_FOUNDRY_DATA_DIR:
         '/private/tmp/scene-loom-browser-tests/foundry-fixture',
+      SCENE_REHEARSAL_DATA_DIR:
+        '/private/tmp/scene-loom-browser-tests/rehearsal-fixture',
       SCENE_LOOM_DATA_DIR: '/private/tmp/scene-loom-browser-tests',
     },
     timeout: 30000,

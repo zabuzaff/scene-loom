@@ -252,7 +252,7 @@ test('ordinary cards select the reviewed slice and resume a shared checkpoint af
   }
 });
 
-test('game card syncs, approves and independently reviews the exact placeholder draft', async ({
+test('game card syncs, plans, links one draft and starts implementation', async ({
   page,
 }) => {
   const { read, publish, open, clean } = await board(page, true);
@@ -276,19 +276,7 @@ test('game card syncs, approves and independently reviews the exact placeholder 
   const camera = 'Approach from the entrance';
   const check = 'Verify collision and selection in game';
   const digest = 'a'.repeat(64);
-  const revised = 'b'.repeat(64);
-  const recovered = 'c'.repeat(64);
-  let accepted = true;
-  let head = digest;
-  let finalApproved = false;
-  let approvalId: string | undefined;
-  const tuple = () => ({
-    storyboardId: id,
-    sceneId,
-    planId: 'plan',
-    planRevision: 'plan',
-    approvalId,
-  });
+  const accepted = true;
   const fixture = createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json');
     if (req.url === '/agent/projects/fixture_foundry') {
@@ -310,45 +298,18 @@ test('game card syncs, approves and independently reviews the exact placeholder 
         }),
       );
     } else if (req.url === '/api/library') {
-      res.end(JSON.stringify({ planHeads: [{ plan: tuple(), digest: head }] }));
+      res.end(
+        JSON.stringify({ drafts: [{ key: `${id}/${sceneId}`, digest }] }),
+      );
     } else if (req.url?.startsWith('/api/revision/')) {
-      const observed = req.url.split('/').at(-1);
       res.end(
         JSON.stringify({
-          digest: observed,
-          parent:
-            observed === 'd'.repeat(64)
-              ? recovered
-              : observed === recovered
-                ? revised
-                : observed === revised
-                  ? digest
-                  : null,
+          digest: req.url.split('/').at(-1),
           scene: {
             version: 3,
-            plan: tuple(),
-            objects: [piece],
-            pendingChecks: [check],
-            scenarios: [
-              {
-                id: 'arrival',
-                events: [
-                  {
-                    intent: camera,
-                    route: [
-                      [0, 0, 0],
-                      [1, 0, 0],
-                    ],
-                  },
-                  { intent: piece.behavior },
-                ],
-              },
-            ],
+            plan: { storyboardId: id, sceneId },
+            scenarios: [{ id: 'arrival' }],
           },
-          approvals: finalApproved ? [{ kind: 'final' }] : [],
-          draftReview: finalApproved
-            ? { checked: 'Inspected the proxy, approach and selection cue.' }
-            : undefined,
         }),
       );
     } else {
@@ -370,6 +331,12 @@ test('game card syncs, approves and independently reviews the exact placeholder 
       url: `http://127.0.0.1:${address.port}`,
       token: 'fixture',
     }),
+  );
+  const rehearsalRoot = join(root, 'rehearsal-fixture');
+  await mkdir(rehearsalRoot, { recursive: true });
+  await writeFile(
+    join(rehearsalRoot, 'runtime.json'),
+    JSON.stringify({ url: `http://127.0.0.1:${address.port}`, pid: 1 }),
   );
   const runtime = JSON.parse(
     await readFile(join(root, 'runtime.json'), 'utf8'),
@@ -449,19 +416,14 @@ test('game card syncs, approves and independently reviews the exact placeholder 
       source.libraryId,
     ])
       expect(planner).toContain(value);
-    const draftRecord = (revisionId: string, parent: string | null) => ({
-      stage: 'publication',
-      approvalId: approvalId ?? 'unapproved',
+    const draftRecord = {
+      stage: 'draft',
       builder: 'builder',
-      dataDir: '/private/tmp/garden-draft-fixture',
-      port: address.port,
-      revisionId,
-      parent,
+      url: `http://127.0.0.1:${address.port}`,
+      draftId: digest,
       scenarioId: 'arrival',
-    });
-    expect((await record('premature', draftRecord(digest, null))).status).toBe(
-      409,
-    );
+    };
+    expect((await record('premature', draftRecord)).status).toBe(409);
     const proposal = {
       stage: 'plan',
       syncId: 'sync',
@@ -474,17 +436,17 @@ test('game card syncs, approves and independently reviews the exact placeholder 
         references: [],
       },
     };
-    expect((await record('initial-plan', proposal)).ok).toBe(true);
+    expect((await record('plan', proposal)).ok).toBe(true);
     await modal.getByText('Courtyard gate', { exact: true }).click();
     await expect(
       modal.getByText('Open after a selection', { exact: true }),
     ).toBeVisible();
     await expect(
-      modal.getByRole('button', { name: 'Copy rehearsal draft prompt' }),
+      modal.getByRole('button', { name: 'Approve plan', exact: true }),
     ).toHaveCount(0);
     expect(
       (
-        await record('fake-approval', {
+        await record('retired', {
           stage: 'decision',
           planId: 'plan',
           verdict: 'approved',
@@ -492,81 +454,25 @@ test('game card syncs, approves and independently reviews the exact placeholder 
       ).status,
     ).toBe(403);
     await modal
-      .getByLabel('Changes to request')
-      .fill('Keep the gate visible from the courtyard.');
-    await modal
-      .getByRole('button', { name: 'Request changes', exact: true })
-      .click();
-    await modal
-      .getByRole('button', { name: 'Copy scene orchestrator planner prompt' })
-      .click();
-    expect(await clipboard()).toContain(
-      'Keep the gate visible from the courtyard.',
-    );
-    expect(
-      (
-        await record('plan', {
-          ...proposal,
-          plan: {
-            ...proposal.plan,
-            intent: 'Keep the gate visible from the courtyard.',
-          },
-        })
-      ).ok,
-    ).toBe(true);
-    await modal
-      .getByRole('button', { name: 'Approve plan', exact: true })
-      .click();
-    await modal
       .getByRole('button', { name: 'Copy rehearsal draft prompt' })
       .click();
-    approvalId = read().scenes[0].rehearsalEvents?.at(-1)?.eventId;
-    expect(await clipboard()).toContain(approvalId);
-    expect((await record('draft', draftRecord(digest, null))).ok).toBe(true);
-    await modal
-      .getByRole('button', { name: 'Copy rehearsal draft review prompt' })
-      .click();
-    expect(await clipboard()).toContain(digest);
-    const review = (
-      publicationId: string,
-      verdict: string,
-      reviewer = 'independent',
-    ) =>
-      record(randomUUID(), {
-        stage: 'draft-review',
-        publicationId,
-        reviewer,
-        verdict,
-        findings: [
-          verdict === 'approved'
-            ? 'Inspected the proxy, approach and selection cue.'
-            : 'Camera cue starts too late.',
-        ],
-      });
-    expect((await review('draft', 'changes-requested', 'builder')).status).toBe(
-      409,
-    );
-    head = revised;
-    expect((await review('draft', 'changes-requested')).status).toBe(409);
-    head = digest;
-    expect((await review('draft', 'changes-requested')).ok).toBe(true);
-    await expect(modal.getByText('Draft changes requested')).toBeVisible();
+    const builder = await clipboard();
+    expect(builder).toContain(`storyboardId ${id}`);
+    expect(builder).toContain(`sceneId ${sceneId}`);
+    expect(builder).toContain('overwrites the same draft');
+    expect(builder).not.toContain('SCENE_REHEARSAL');
+    expect((await record('draft', draftRecord)).ok).toBe(true);
+    await expect(modal.getByRole('link', { name: /Open draft/ })).toBeVisible();
     await expect(
       modal.getByRole('button', { name: 'Copy rehearsal draft prompt' }),
-    ).toBeVisible();
-    head = revised;
-    expect((await record('draft-2', draftRecord(revised, digest))).ok).toBe(
-      true,
-    );
-    expect((await review('draft', 'approved')).status).toBe(409);
-    expect((await review('draft-2', 'approved')).status).toBe(409);
-    finalApproved = true;
-    accepted = false;
-    expect(
-      (await (await review('draft-2', 'approved')).json()).error.code,
-    ).toBe('STALE_FOUNDRY');
-    accepted = true;
-    expect((await review('draft-2', 'approved')).ok).toBe(true);
+    ).toHaveCount(0);
+    await modal
+      .getByRole('button', { name: 'Copy start implementation prompt' })
+      .click();
+    const start = await clipboard();
+    expect(start).toContain(digest);
+    expect(start).toContain(check);
+    expect(start).toContain('final approval');
     await modal
       .getByRole('button', { name: 'Copy scene status resync prompt' })
       .click();
@@ -582,7 +488,7 @@ test('game card syncs, approves and independently reviews the exact placeholder 
       id: sceneId,
       report: {
         foundry: 'Gate prototype verified in the linked library.',
-        rehearsal: `Approved draft ${revised}.`,
+        rehearsal: `Accepted draft ${digest}.`,
         implementation: 'Gate selection verified on /garden.',
         next: 'Review the arrival view.',
       },
@@ -594,15 +500,10 @@ test('game card syncs, approves and independently reviews the exact placeholder 
     ).toBeVisible();
     await expect(modal.getByText('Storyboard inputs changed')).toHaveCount(0);
     await modal
-      .getByRole('button', { name: 'Copy game implementation handoff' })
-      .click();
-    expect(await clipboard()).toContain(revised);
-    expect(await clipboard()).toContain(check);
-    await modal
       .getByRole('button', { name: 'Copy in-game scene review prompt' })
       .click();
     const gameReview = await clipboard();
-    expect(gameReview).toContain(revised);
+    expect(gameReview).toContain(digest);
     expect(gameReview).toContain('SS1, SS2');
     expect(gameReview).toContain('still match the active handoff');
     expect(gameReview).toContain(
@@ -637,21 +538,6 @@ test('game card syncs, approves and independently reviews the exact placeholder 
     expect((await modal.boundingBox())!.width).toBeLessThan(390);
     await page.screenshot({ path: 'test-results/rehearsal-action-narrow.png' });
     await page.setViewportSize({ width: 1440, height: 960 });
-    const latest = 'd'.repeat(64);
-    head = latest;
-    expect(
-      (await record('reconciled', draftRecord(latest, recovered))).ok,
-    ).toBe(true);
-    expect((await review('reconciled', 'plan-changes-requested')).ok).toBe(
-      true,
-    );
-    await modal
-      .getByRole('button', { name: 'Copy scene orchestrator planner prompt' })
-      .click();
-    expect(await clipboard()).toContain('plan-changes-requested');
-    await expect(
-      modal.getByRole('button', { name: 'Copy rehearsal draft prompt' }),
-    ).toHaveCount(0);
     publish({
       type: 'scene.patch',
       id: sceneId,
@@ -660,9 +546,7 @@ test('game card syncs, approves and independently reviews the exact placeholder 
     await expect(
       modal.getByRole('button', { name: 'Copy accepted-asset sync prompt' }),
     ).toBeVisible();
-    expect(
-      (await record('stale-draft', draftRecord(revised, digest))).status,
-    ).toBe(409);
+    expect((await record('stale-draft', draftRecord)).status).toBe(409);
     await expect(
       modal.getByRole('heading', { name: 'Earlier accepted-model manifest' }),
     ).toBeVisible();

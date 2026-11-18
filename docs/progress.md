@@ -271,3 +271,10 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Added **Copy in-game scene review prompt** alongside the approved game handoff. It carries the exact plan and pins, accepts an owner-supplied prototype name for scale, and requests numbered screenshot evidence and a builder correction prompt. Build, lint and the Chrome clipboard workflow passed.
 
 - Added **Copy scene status resync prompt** beside **Where you left off**. An agent inspects Foundry, Rehearsal and the implementation read-only and saves four summaries with the standalone `scene.status.record` operation. The saved report appears as **Last resync** and flags changed storyboard inputs. It does not change workflow state, inputs or checkpoints. Typecheck, lint, formatting, unit tests, build and the seven Chrome tests passed.
+
+## Simplified Rehearsal workflow — 2026-11-18
+
+- One mutable Rehearsal draft per storyboard scene card. Publishing again overwrites it, resets acceptance only when the content changed, and keeps feedback pins. Old revisions remain readable.
+- Loom's chain is now sync, plan, draft link, then **Copy start implementation prompt**. Plan decision, publication and draft review records are history only. The owner agrees to plans in chat and accepts the draft in Rehearsal. Implementation marks the card implemented on a light, relevance-based check.
+- Scene Rehearsal starts with no setup: default data directory, port 4331 with free-port fallback, `runtime.json` discovery for the CLI (which also starts the service) and for Mesh Foundry.
+- Verified with typecheck, lint, format check and unit tests in both repos. The browser tests were not rerun and the old plan-decision browser test path was not updated.

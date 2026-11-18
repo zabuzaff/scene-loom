@@ -240,8 +240,7 @@ function CanvasInner({
         }
         if (action !== 'assets' && action !== 'continue' && action !== 'edit') {
           const prompt =
-            p.meshFoundryEnabled &&
-            orchestrationPrompt(info, p, s, action, targetKey);
+            p.meshFoundryEnabled && orchestrationPrompt(info, p, s, action);
           if (!prompt) {
             report('The scene workflow changed. Use the current card action.');
             return;

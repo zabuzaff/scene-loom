@@ -192,10 +192,8 @@ export function GameResume({ data }: { data: CardData }) {
     sync: 'Asset sync pending',
     resolve: 'Required assets unresolved',
     plan: 'Plan proposal pending',
-    decide: 'Owner plan decision pending',
     publish: 'Placeholder draft pending',
-    'review-draft': 'Independent draft review pending',
-    handoff: 'Draft approved for game implementation',
+    handoff: 'Draft ready. Accept it in Rehearsal, then start implementation',
   }[next];
   return (
     <section className="game-resume">

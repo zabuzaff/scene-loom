@@ -17,12 +17,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUpRight, PencilLine, ChevronDown, Shapes, X } from 'lucide-react';
 import type { ProjectData, SceneData } from '../shared/schema';
-import {
-  api,
-  orchestrationActions,
-  RequestError,
-  type OrchestrationCopyAction,
-} from './api';
+import { orchestrationActions, type OrchestrationCopyAction } from './api';
 import { orchestrationState } from '../shared/orchestration';
 import type { sceneDevelopment } from '../shared/development';
 import {
@@ -533,78 +528,22 @@ function SceneDialog({
 }
 
 function RehearsalActions({ data }: { data: CardData }) {
+  const { scene, rehearsalInputRevision, expanded } = data;
   const {
-    scene,
-    rehearsalInputRevision,
-    projectId,
-    contentRevision,
-    expanded,
-  } = data;
-  const { sync, plan, decision, draft, review, next, current } =
-    orchestrationState(scene.rehearsalEvents, rehearsalInputRevision);
-  const [feedback, setFeedback] = useState('');
-  const [status, setStatus] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [staleFoundryPlanId, setStaleFoundryPlanId] = useState<string>();
+    sync,
+    plan,
+    decision,
+    draft,
+    review,
+    next,
+    current,
+    draftId,
+    draftUrl,
+  } = orchestrationState(scene.rehearsalEvents, rehearsalInputRevision);
   const unresolved = sync?.entries.filter((entry) => !entry.source) ?? [];
   const missing = unresolved.filter((entry) => entry.required);
-  const recheck =
-    next === 'decide' && plan?.eventId && staleFoundryPlanId === plan.eventId;
-  const action =
-    next === 'resolve' || recheck
-      ? 'sync'
-      : next === 'decide'
-        ? undefined
-        : next;
+  const action = next === 'resolve' ? 'sync' : next;
   const label = action && orchestrationActions[action];
-
-  async function decide(verdict: 'approved' | 'changes-requested') {
-    if (!plan || saving) return;
-    setSaving(true);
-    setStatus('');
-    try {
-      await api(`projects/${projectId}/plan-decision`, 'POST', {
-        schemaVersion: 1,
-        projectId,
-        expectedContentRevision: contentRevision,
-        requestId: crypto.randomUUID(),
-        operations: [
-          {
-            type: 'rehearsal.record',
-            id: scene.id,
-            afterEventId: scene.rehearsalEvents?.at(-1)?.eventId ?? null,
-            event: {
-              kind: 'orchestration',
-              eventId: crypto.randomUUID(),
-              record: {
-                stage: 'decision',
-                planId: plan.eventId,
-                verdict,
-                ...(feedback.trim() ? { feedback: feedback.trim() } : {}),
-              },
-            },
-          },
-        ],
-      });
-      setStatus(
-        verdict === 'approved' ? 'Plan approved.' : 'Plan changes requested.',
-      );
-      setFeedback('');
-    } catch (error) {
-      if (
-        error instanceof RequestError &&
-        error.detail.code === 'STALE_FOUNDRY'
-      )
-        setStaleFoundryPlanId(plan.eventId);
-      setStatus(
-        error instanceof Error
-          ? error.message
-          : 'Could not save your decision.',
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
 
   return (
     <section className="scene-rehearsal-actions scene-asset-action nodrag">
@@ -615,7 +554,6 @@ function RehearsalActions({ data }: { data: CardData }) {
           the required selection before syncing again.
         </p>
       )}
-      {next === 'decide' && !expanded && <p>Plan awaiting your decision</p>}
       {label && action && (
         <>
           <button
@@ -623,11 +561,7 @@ function RehearsalActions({ data }: { data: CardData }) {
             className="studio-copy-action nodrag"
             onClick={(event) => {
               event.stopPropagation();
-              data.copy(
-                scene.id,
-                action,
-                recheck ? staleFoundryPlanId : undefined,
-              );
+              data.copy(scene.id, action);
             }}
           >
             <Shapes size={15} aria-hidden="true" /> {label.label}
@@ -743,45 +677,13 @@ function RehearsalActions({ data }: { data: CardData }) {
             </>
           )}
           {decision?.feedback && <p>Requested changes · {decision.feedback}</p>}
-          {next === 'decide' && (
-            <>
-              <label>
-                Changes to request
-                <textarea
-                  value={feedback}
-                  maxLength={8000}
-                  onChange={(event) => setFeedback(event.target.value)}
-                />
-              </label>
-              <div className="orchestration-decisions">
-                <button
-                  type="button"
-                  className="studio-copy-action"
-                  disabled={saving}
-                  onClick={() => void decide('approved')}
-                >
-                  Approve plan
-                </button>
-                <button
-                  type="button"
-                  className="studio-copy-action"
-                  disabled={saving || !feedback.trim()}
-                  onClick={() => void decide('changes-requested')}
-                >
-                  Request changes
-                </button>
-              </div>
-            </>
-          )}
         </section>
       )}
       {expanded && current && draft && (
         <section className="orchestration-manifest">
           <h4>Placeholder draft</h4>
-          <ExternalRevision
-            link={`http://127.0.0.1:${draft.port}/revision/${draft.revisionId}/${draft.scenarioId}`}
-          >
-            Open draft {draft.revisionId}
+          <ExternalRevision link={draftUrl!}>
+            Open draft {draftId?.slice(0, 10)}
           </ExternalRevision>
           {review && (
             <>
@@ -802,7 +704,6 @@ function RehearsalActions({ data }: { data: CardData }) {
           )}
         </section>
       )}
-      {expanded && status && <p role="status">{status}</p>}
     </section>
   );
 }
