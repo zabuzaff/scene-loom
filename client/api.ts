@@ -194,7 +194,9 @@ export function orchestrationPrompt(
     scene.rehearsalEvents,
     revision,
   );
-  if (action !== next && !(action === 'review-game' && next === 'handoff'))
+  // While required selections are unresolved the card offers sync again.
+  const expected = next === 'resolve' ? 'sync' : next;
+  if (action !== expected && !(action === 'review-game' && next === 'handoff'))
     return;
   const write =
     'Read schema batch. Record one rehearsal.record event with kind orchestration, the scene ID, a unique event ID, current afterEventId, expectedContentRevision and a unique request ID. Dry-run and apply. On conflict reread both apps, reconcile exact IDs and retry only if work still targets the current inputs. If Foundry acceptance changed, persist a fresh exact sync preview with its gaps before continuing. ';
