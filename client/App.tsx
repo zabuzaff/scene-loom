@@ -18,6 +18,7 @@ import {
   X,
   FolderOpen,
   CircleHelp,
+  Compass,
 } from 'lucide-react';
 const Canvas = lazy(() =>
   import('./Canvas').then((module) => ({ default: module.Canvas })),
@@ -26,6 +27,7 @@ import {
   api,
   starterPrompt,
   assetSuggestionPrompt,
+  workflowGuidePrompt,
   visionPrompt,
   firstStoryboardPrompt,
   repositoryPrompt,
@@ -814,6 +816,27 @@ export function App() {
             <button className="primary-button" onClick={() => void copyStart()}>
               Copy a starting prompt <ArrowUpRight size={16} />
             </button>
+            <button
+              className="secondary-button"
+              disabled={!info}
+              onClick={() =>
+                info &&
+                void copyPrompt(
+                  workflowGuidePrompt(
+                    info,
+                    project && project.id === activeRef.current
+                      ? project
+                      : undefined,
+                  ),
+                )
+              }
+            >
+              <Compass size={16} /> Copy workflow guide prompt
+            </button>
+            <span className="help-note">
+              Paste into a fresh chat. It guides you across Scene Loom, Mesh
+              Foundry and Scene Rehearsal, then answers “what next?”.
+            </span>
             <div className="help-local">
               <FolderOpen size={15} />
               <span>Images and canvas data stay on this computer.</span>
