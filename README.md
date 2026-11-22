@@ -22,6 +22,15 @@ For development, use `npm run dev` instead. It serves source through Vite on the
 
 Default project data: `~/Library/Application Support/Scene Loom`. Override with an absolute `SCENE_LOOM_DATA_DIR`; both service and CLI must use the same value. `SCENE_LOOM_PORT` changes the service port (default 4318). Keep data directories outside the source repository.
 
+### Start the whole studio
+
+```sh
+npm run up              # start whichever of the three services is not running
+npm run up -- --status  # only print the table
+```
+
+`npm run up` starts Scene Loom, Mesh Foundry (`npm start`, port 4323) and Scene Rehearsal (`npm start`, port 4331) from their sibling checkouts (`../mesh-foundry`, `../scene-rehearsal`; override with `MESH_FOUNDRY_CHECKOUT` and `SCENE_REHEARSAL_CHECKOUT`). A service that is already running for its data directory is left alone, and nothing is ever stopped. Each checkout must be installed and built first; the script says so if not. Service output goes to `$TMPDIR/scene-loom-up/`. The table shows each service's URL, pid, data directory and code revision. A running service is marked `stale` when its reported revision differs from its checkout's current git revision (`+uncommitted` means a dirty working tree). Mesh Foundry does not report a revision, so it can never be marked stale. Scene Loom and Scene Rehearsal report one through `runtime.json` or `npm start -- --status`. The usual overrides (`SCENE_LOOM_DATA_DIR`, `MESH_FOUNDRY_DATA_DIR`, `SCENE_REHEARSAL_DATA_DIR` and the matching `*_PORT` variables) apply to the status read and to every service it starts.
+
 ## Agent use
 
 Read [the agent interface guide](docs/agent-interface.md). Start with:

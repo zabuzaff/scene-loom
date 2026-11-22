@@ -133,20 +133,18 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
       'Do not edit application code or implement the slice',
     );
     expect(plan).toContain(
-      'extract only broad visual cues such as palette, contrast, restraint, and overall aesthetic',
+      'extract only broad visual cues from a creator-supplied reference website, such as palette, contrast, restraint, and overall aesthetic',
     );
+    expect(plan).toContain('use live web research in three lanes');
+    expect(plan).toContain('Community-curated design sources');
+    expect(plan).toContain('One source from a completely different world');
+    expect(plan).toContain('name one specific trait you will borrow');
+    expect(plan).toContain('at least three named candidate directions');
     expect(plan).toContain(
-      'compare both widely used products and recent product launches or redesigns',
+      'under the parent directory of the target repository',
     );
-    expect(plan).toContain(
-      'For new or explicitly redesigned surfaces, use live web research',
-    );
-    expect(plan).toContain(
-      'Prioritize the most recent comparable designs you can verify',
-    );
-    expect(plan).toContain(
-      'dated screenshots, walkthroughs, or redesign notes that actually show the pattern',
-    );
+    expect(plan).toContain("Impeccable's direction contract is a gate");
+    expect(plan).toContain('theme tokens for colour, radius, density and type');
     expect(plan).toContain('design an original interface for this project');
     expect(plan).toContain('I authorize browsing official documentation');
     expect(plan).toContain('Choose the frontend and backend frameworks');
@@ -161,6 +159,9 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(review).toContain('Give a Ready or Needs revision verdict');
     expect(review).toContain(
       'SHA-256 of the exact bytes reviewed for each plan file',
+    );
+    expect(review).toContain(
+      'A missing Direction contract is a material finding',
     );
     expect(review).toContain(
       'Check that the planned scope and acceptance checks cover',
@@ -263,6 +264,10 @@ test('real CLI ingestion → canvas → copy prompts → drag + live edit → pe
     expect(development).toContain('complete the primary flow with a keyboard');
     expect(development).toContain('report browser verification as incomplete');
     expect(development).toContain('Do not build custom frameworks');
+    expect(development).toContain(
+      "confirm the target repository's design brief contains Impeccable's Direction contract",
+    );
+    expect(development).toContain('they do not look like default components');
     expect(development).toContain('Use Scene Loom as a read-only reference');
     await openProjectActions();
     await page
@@ -1562,9 +1567,9 @@ test('named storyboard copy switches and hands Mesh Foundry the exact CLI scene'
       exact: true,
     });
     await sync.click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
-      `scene accepted-assets ${copyId} lobby`,
-    );
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toContain(`scene accepted-assets ${copyId} lobby`);
     await page.setViewportSize({ width: 390, height: 650 });
     await trigger.click();
     const storyboards = page.getByRole('group', { name: 'Storyboards' });

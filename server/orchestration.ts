@@ -1,14 +1,22 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import {
+  missingEvidence,
+  nameKey,
   orchestrationState,
+  overlayResolutions,
+  type EffectiveEntry,
+  type OrchestrationAction,
   type OrchestrationRecord,
 } from '../shared/orchestration.js';
-import { rehearsalState, sameModel } from '../shared/rehearsal.js';
+import { sameModel } from '../shared/rehearsal.js';
 import type { ProjectData, SceneData } from '../shared/schema.js';
-import { readSelectedAcceptances } from './foundry.js';
-import { fail } from './store.js';
+import { readSelectedAcceptances, sourceIsAccepted } from './foundry.js';
+import { fail, StudioError } from './store.js';
 
 export function linkedLibrary(project: ProjectData, scene: SceneData) {
   const selected =
@@ -64,46 +72,135 @@ export async function acceptancePreview(
   return { libraryId, inputRevision, entries };
 }
 
+export type WorkflowAction = OrchestrationAction;
+export type WorkflowStatus = {
+  // true when entries were read from Foundry just now, false when they are
+  // the last recorded snapshot because Foundry could not be read.
+  live: boolean;
+  readAt: string;
+  reason?: string;
+  // true only when Foundry itself could not be reached or read.
+  unreachable?: boolean;
+  libraryId?: string;
+  entries: EffectiveEntry[];
+  recorded: EffectiveEntry[];
+  drifted: boolean;
+  current: boolean;
+  next: OrchestrationAction | 'resolve';
+  action: WorkflowAction;
+};
+
+// The authoritative answer to "what does this scene need next". Foundry's
+// current acceptance wins over the stored snapshot, which stays as evidence.
+// When Foundry cannot be read the answer degrades to the snapshot and says
+// so; it never throws and never blocks the owner.
+export async function workflowStatus(
+  project: ProjectData,
+  scene: SceneData,
+): Promise<WorkflowStatus> {
+  const inputRevision =
+    project.rehearsalInputRevision ?? project.contentRevision;
+  const state = orchestrationState(scene.rehearsalEvents, inputRevision);
+  const base = {
+    readAt: new Date().toISOString(),
+    recorded: state.entries,
+    current: state.current,
+  };
+  const settle = (next: WorkflowStatus['next']) =>
+    ({
+      ...base,
+      next,
+      action: next === 'resolve' ? 'sync' : next,
+    }) as const;
+  let preview;
+  try {
+    preview = await acceptancePreview(project, scene);
+  } catch (error) {
+    const unreachable =
+      !(error instanceof StudioError) || error.code === 'FOUNDRY_UNAVAILABLE';
+    const reason = unreachable
+      ? 'Mesh Foundry could not be read, so this shows the last recorded state.'
+      : (error as StudioError).message;
+    return {
+      ...settle(state.next),
+      live: false,
+      unreachable,
+      reason,
+      entries: state.entries,
+      drifted: false,
+      libraryId: state.sync?.libraryId,
+    };
+  }
+  const entries = overlayResolutions(
+    preview.entries,
+    state.resolutions,
+    undefined,
+  );
+  const drifted =
+    !!state.sync &&
+    state.current &&
+    (preview.libraryId !== state.sync.libraryId ||
+      !isDeepStrictEqual(entries, state.entries));
+  const next = !state.sync || !state.current || drifted ? 'sync' : state.next;
+  return {
+    ...settle(next),
+    live: true,
+    entries,
+    drifted,
+    libraryId: preview.libraryId,
+  };
+}
+
+// An owner-initiated card action meets current state. An action that still
+// matches is confirmed; otherwise the response carries the current action so
+// the card can refresh and offer it. Nothing is applied from here.
+export async function checkCardAction(
+  project: ProjectData,
+  scene: SceneData,
+  requested: string,
+) {
+  const status = await workflowStatus(project, scene);
+  const base = { requested, contentRevision: project.contentRevision };
+  // Without a live read nothing is verified: say so, and let the owner copy
+  // the prompt anyway.
+  if (!status.live)
+    return {
+      ...base,
+      ...status,
+      status: 'unverified' as const,
+      reason: status.reason ?? 'The current state could not be verified.',
+    };
+  const matches =
+    requested === status.action ||
+    (requested === 'review-game' && status.action === 'handoff');
+  return {
+    ...base,
+    ...status,
+    status: matches ? ('current' as const) : ('changed' as const),
+  };
+}
+
 const draftRead = z.object({
   digest: z.string(),
-  parent: z.string().nullable(),
   scene: z.object({
     version: z.literal(3),
-    plan: z.object({
-      storyboardId: z.string(),
-      sceneId: z.string(),
-      planId: z.string(),
-      planRevision: z.union([z.string(), z.number().int().nonnegative()]),
-      approvalId: z.string(),
-    }),
-    objects: z.array(
-      z.object({
-        id: z.string(),
-        pieces: z.array(z.string()).optional(),
-        asset: z.unknown().optional(),
-        position: z.array(z.number()),
-        size: z.array(z.number()),
-        scale: z.array(z.number()),
-        rotation: z.array(z.number()),
-      }),
-    ),
-    pendingChecks: z.array(z.string()),
-    scenarios: z.array(
-      z.object({
-        id: z.string(),
-        events: z.array(
-          z.object({
-            intent: z.string(),
-            route: z.unknown().optional(),
-            camera: z.unknown().optional(),
-          }),
-        ),
-      }),
-    ),
+    plan: z.object({ storyboardId: z.string(), sceneId: z.string() }),
+    scenarios: z.array(z.object({ id: z.string() })),
   }),
-  draftReview: z.object({ checked: z.string() }).optional(),
-  approvals: z.array(z.object({ kind: z.string() })),
 });
+
+// Rehearsal publishes its address in runtime.json; read only the URL.
+export async function rehearsalOrigin() {
+  if (process.env.SCENE_LOOM_REHEARSAL_URL)
+    return process.env.SCENE_LOOM_REHEARSAL_URL;
+  const dir =
+    process.env.SCENE_REHEARSAL_DATA_DIR ??
+    join(homedir(), 'Library/Application Support/Scene Rehearsal');
+  const { url } = z
+    .object({ url: z.string() })
+    .parse(JSON.parse(await readFile(join(dir, 'runtime.json'), 'utf8')));
+  return url;
+}
 
 export async function validateOrchestration(
   project: ProjectData,
@@ -113,10 +210,8 @@ export async function validateOrchestration(
   const events = scene.rehearsalEvents ?? [];
   const inputRevision =
     project.rehearsalInputRevision ?? project.contentRevision;
-  const { sync, plan, decision, draft, next } = orchestrationState(
-    events,
-    inputRevision,
-  );
+  const state = orchestrationState(events, inputRevision);
+  const { sync, plan, next } = state;
   const { record } = event;
   function requireCurrent(
     condition: unknown,
@@ -154,20 +249,55 @@ export async function validateOrchestration(
     );
     return;
   }
+  if (record.stage === 'owner-resolution') {
+    requireCurrent(
+      sync && next !== 'sync' && record.syncId === sync.eventId,
+      'Sync the scene assets first; the resolution must cite the current manifest.',
+    );
+    const target = sync.entries.filter(
+      (entry) => nameKey(entry.name) === nameKey(record.name),
+    );
+    requireCurrent(
+      target.length === 1 &&
+        target[0].required &&
+        !target[0].source &&
+        isDeepStrictEqual(record.prior, target[0]),
+      'Name one required selection from the current manifest that has no accepted source, with its recorded state.',
+    );
+    // A pinned source needs live proof; with Foundry unreachable only a
+    // waiver (no source) may be recorded. A newer resolution supersedes an
+    // older one for the same name in this sync.
+    if (record.source) {
+      requireCurrent(
+        record.source.libraryId === sync.libraryId,
+        'The source must be in the linked library.',
+      );
+      const accepted = await sourceIsAccepted(record.source).catch(() =>
+        fail(
+          'FOUNDRY_UNAVAILABLE',
+          'Foundry could not be read, so only a waiver without a source can be recorded.',
+          503,
+        ),
+      );
+      requireCurrent(
+        accepted,
+        'That revision is not currently accepted in the linked Foundry library.',
+      );
+    }
+    return;
+  }
   requireCurrent(
     next !== 'resolve' && next !== 'sync' && sync,
     'Sync all required scene assets first.',
   );
-  if (
-    record.stage === 'plan' ||
-    record.stage === 'decision' ||
-    record.stage === 'publication' ||
-    (record.stage === 'draft-review' && record.verdict === 'approved')
-  ) {
+  if (record.stage === 'plan' || record.stage === 'draft') {
     const preview = await acceptancePreview(project, scene);
     if (
       preview.libraryId !== sync.libraryId ||
-      !isDeepStrictEqual(preview.entries, sync.entries)
+      !isDeepStrictEqual(
+        overlayResolutions(preview.entries, state.resolutions, undefined),
+        state.entries,
+      )
     )
       fail(
         'STALE_FOUNDRY',
@@ -175,10 +305,35 @@ export async function validateOrchestration(
         409,
       );
   }
+  if (
+    record.stage === 'decision' ||
+    record.stage === 'publication' ||
+    record.stage === 'draft-review'
+  )
+    fail(
+      'LEGACY_STAGE',
+      'Plan approval, publication and draft review are retired. Save the plan, then a draft record once Rehearsal holds the draft.',
+      409,
+    );
+  if (record.stage === 'game-review') {
+    requireCurrent(
+      state.draft && record.draftId === state.draftId,
+      'Record the review against the scene’s current Rehearsal draft.',
+    );
+    const missing = missingEvidence(record.evidence);
+    if (record.verdict === 'ready' && missing.length)
+      fail(
+        'REVIEW_EVIDENCE_REQUIRED',
+        `A ready game review needs non-empty evidence for every category. Missing: ${missing.join(', ')}.`,
+        422,
+        'Add evidence.propCaptures [{piece, captureRef}], evidence.scaleChecks [{piece, against, result}] and evidence.clipChecks [{piece, clip, action, result}], or record changes-requested with findings.',
+      );
+    return;
+  }
   if (record.stage === 'plan') {
     requireCurrent(
-      next === 'plan' && record.syncId === sync.eventId,
-      'The proposal must target the current manifest and address any requested changes.',
+      record.syncId === sync.eventId,
+      'The proposal must target the current manifest.',
     );
     const { pieces } = record.plan;
     requireCurrent(
@@ -188,13 +343,14 @@ export async function validateOrchestration(
             piece.size.every((value) => value > 0 && value <= 100) &&
             piece.scale.every((value) => value > 0) &&
             (!piece.source ||
-              sync.entries.some((entry) =>
+              state.entries.some((entry) =>
                 sameModel(entry.source, piece.source!),
               )),
         ) &&
-        sync.entries.every(
+        state.entries.every(
           (entry) =>
             !entry.required ||
+            (entry.ownerResolved && !entry.source) ||
             pieces.some(
               (piece) => piece.source && sameModel(entry.source, piece.source),
             ),
@@ -204,161 +360,50 @@ export async function validateOrchestration(
     return;
   }
   requireCurrent(plan, 'A current plan is required.');
-  if (record.stage === 'decision') {
-    requireCurrent(
-      next === 'decide' &&
-        plan.eventId === record.planId &&
-        (record.verdict === 'approved' || record.feedback),
-      'Decide on the exact pending proposal and include any requested changes.',
-    );
-    return;
-  }
-  requireCurrent(
-    decision?.verdict === 'approved',
-    'A current owner approval is required.',
-  );
-  const target = record.stage === 'publication' ? record : draft;
-  requireCurrent(target, 'A recorded draft is required.');
-  if (record.stage === 'publication') {
-    requireCurrent(
-      (next === 'publish' || next === 'review-draft' || next === 'handoff') &&
-        record.approvalId === decision.eventId &&
-        record.revisionId !== record.parent &&
-        (!draft ||
-          (record.dataDir === draft.dataDir && record.port === draft.port)),
-      'Publish under the current approval and recorded Rehearsal library.',
-    );
-    const legacy = rehearsalState(events).head;
-    requireCurrent(
-      !legacy ||
-        (record.dataDir === legacy.dataDir && record.port === legacy.port),
-      'Use the recorded Rehearsal library.',
-    );
-  } else {
-    requireCurrent(
-      next === 'review-draft' &&
-        record.publicationId === draft?.eventId &&
-        [plan.planner, draft.builder].every(
-          (author) =>
-            author.trim().toLowerCase() !==
-            record.reviewer.trim().toLowerCase(),
-        ),
-      'A fresh independent reviewer must review the exact recorded draft.',
-    );
-  }
-  const tuple = {
-    storyboardId: project.id,
-    sceneId: scene.id,
-    planId: plan.eventId,
-    planRevision: plan.eventId,
-    approvalId: decision.eventId,
-  };
-  const actual = await (async () => {
-    const read = async (path: string) => {
-      const response = await fetch(`http://127.0.0.1:${target.port}${path}`, {
-        redirect: 'error',
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!response.ok) throw new Error('Rehearsal read failed.');
-      return response.json();
-    };
-    const actual = draftRead.parse(
-      await read(`/api/revision/${target.revisionId}`),
-    );
-    const library = z
-      .object({
-        planHeads: z.array(
-          z.object({
-            plan: draftRead.shape.scene.shape.plan,
-            digest: z.string(),
-          }),
-        ),
-      })
-      .parse(await read('/api/library'));
-    const head = library.planHeads.find((entry) =>
-      isDeepStrictEqual(entry.plan, tuple),
-    )?.digest;
-    const recorded = draft?.revisionId ?? null;
-    let ancestor = actual.parent;
-    if (
-      record.stage === 'publication' &&
-      head === target.revisionId &&
-      actual.parent === target.parent
-    ) {
-      const seen = new Set([target.revisionId]);
-      while (
-        ancestor !== recorded &&
-        ancestor &&
-        /^[a-f0-9]{64}$/.test(ancestor) &&
-        !seen.has(ancestor) &&
-        seen.size <= 16
-      ) {
-        seen.add(ancestor);
-        const revision = draftRead.parse(
-          await read(`/api/revision/${ancestor}`),
-        );
-        if (
-          revision.digest !== ancestor ||
-          !isDeepStrictEqual(revision.scene.plan, tuple)
-        )
-          break;
-        ancestor = revision.parent;
-      }
-    }
-    return { actual, head, reconciled: ancestor === recorded };
-  })().catch(() =>
+  const origin = await rehearsalOrigin().catch(() =>
     fail(
       'REHEARSAL_UNAVAILABLE',
-      'Could not verify the exact Rehearsal revision and plan head.',
+      'Scene Rehearsal is not running. Start it with its CLI, then retry.',
       503,
     ),
   );
-  const { actual: checked, head, reconciled } = actual;
-  const cueRecords = checked.scene.scenarios.flatMap(
-    (scenario) => scenario.events,
+  const read = async (path: string) => {
+    const response = await fetch(origin + path, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error('Rehearsal read failed.');
+    return response.json();
+  };
+  const checked = await Promise.all([
+    read(`/api/revision/${record.draftId}`).then((value) =>
+      draftRead.parse(value),
+    ),
+    read('/api/library').then((value) =>
+      z
+        .object({
+          drafts: z.array(z.object({ key: z.string(), digest: z.string() })),
+        })
+        .parse(value),
+    ),
+  ]).catch(() =>
+    fail(
+      'REHEARSAL_UNAVAILABLE',
+      'Could not read the draft from Scene Rehearsal.',
+      503,
+    ),
   );
-  const planPieceIds = new Set(plan.plan.pieces.map((piece) => piece.id));
-  const representedIds = checked.scene.objects.flatMap(
-    (object) => object.pieces ?? [object.id],
-  );
+  const [found, library] = checked;
   requireCurrent(
-    (record.stage !== 'publication' || reconciled) &&
-      head === target.revisionId &&
-      checked.digest === target.revisionId &&
-      checked.parent === target.parent &&
-      isDeepStrictEqual(checked.scene.plan, tuple) &&
-      checked.scene.scenarios.some(({ id }) => id === target.scenarioId) &&
-      checked.scene.objects.every(({ asset }) => !asset) &&
-      representedIds.length === planPieceIds.size &&
-      new Set(representedIds).size === planPieceIds.size &&
-      representedIds.every((id) => planPieceIds.has(id)) &&
-      plan.plan.checks.every((check) =>
-        checked.scene.pendingChecks.includes(check),
-      ) &&
-      plan.plan.cameraOrTraversal.every((cue) =>
-        cueRecords.some(
-          (record) => record.intent === cue && (record.route || record.camera),
-        ),
-      ) &&
-      plan.plan.pieces.every((piece) =>
-        cueRecords.some((record) => record.intent === piece.behavior),
-      ) &&
-      plan.plan.pieces.every((piece) =>
-        checked.scene.objects.some(
-          (object) =>
-            (object.id === piece.id || object.pieces?.includes(piece.id)) &&
-            (['position', 'size', 'scale', 'rotation'] as const).every((key) =>
-              isDeepStrictEqual(object[key], piece[key]),
-            ),
-        ),
+    record.url === origin &&
+      found.digest === record.draftId &&
+      found.scene.plan.storyboardId === project.id &&
+      found.scene.plan.sceneId === scene.id &&
+      found.scene.scenarios.some(({ id }) => id === record.scenarioId) &&
+      library.drafts.some(
+        ({ key, digest }) =>
+          key === `${project.id}/${scene.id}` && digest === record.draftId,
       ),
-    'The published placeholder draft must match this approved plan, scenario and piece transforms.',
+    'Record the live Rehearsal draft for this exact storyboard scene and one of its scenarios.',
   );
-  if (record.stage === 'draft-review' && record.verdict === 'approved')
-    requireCurrent(
-      checked.approvals.some(({ kind }) => kind === 'final') &&
-        checked.draftReview &&
-        record.findings.includes(checked.draftReview.checked),
-      'Record the exact published draft approval and its checked evidence from Rehearsal.',
-    );
 }

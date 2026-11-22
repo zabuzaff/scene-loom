@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test:browser": "playwright test",
+    "up": "tsx scripts/dev-up.ts",
     "demo": "tsx scripts/demo.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

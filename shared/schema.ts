@@ -124,6 +124,33 @@ export const ProjectVision = z.strictObject({
     notes: Text,
   }),
 });
+const Short = z.string().trim().min(1).max(500);
+// The visual direction the planning agent chose for a new frontend surface.
+// Content, not approval: agents write it and other projects read it to avoid
+// converging on the same look.
+export const DesignDirection = z.strictObject({
+  name: z.string().trim().min(1).max(200),
+  summary: z.string().trim().min(1).max(4000),
+  palette: z.array(Short).min(1).max(20),
+  typePairing: Short,
+  layoutIdea: z.string().trim().min(1).max(2000),
+  sources: z
+    .array(
+      z.strictObject({
+        url: z
+          .url()
+          .refine(
+            (value) => /^https?:\/\//.test(value),
+            'Use an HTTP or HTTPS URL',
+          ),
+        observedTrait: Short,
+      }),
+    )
+    .max(50),
+  rejectedAlternatives: z.array(z.string().trim().min(1).max(2000)).max(20),
+  chosenAt: z.iso.datetime(),
+});
+export type DesignDirectionData = z.infer<typeof DesignDirection>;
 export type ProjectVisionData = z.infer<typeof ProjectVision>;
 const StoryboardName = z
   .string()
@@ -166,6 +193,7 @@ export const Project = z.strictObject({
   updatedAt: z.string(),
   storyboard: Storyboard.optional(),
   vision: ProjectVision.optional(),
+  designDirection: DesignDirection.optional(),
   meshFoundryEnabled: z.boolean().optional(),
   assetSuggestions: z.array(AssetSuggestion).optional(),
   development: Development.optional(),
@@ -201,6 +229,10 @@ export const Operation = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('project.vision.set'),
     vision: ProjectVision,
+  }),
+  z.strictObject({
+    type: z.literal('project.design-direction.set'),
+    designDirection: DesignDirection,
   }),
   z.strictObject({
     type: z.literal('asset-suggestion.upsert'),

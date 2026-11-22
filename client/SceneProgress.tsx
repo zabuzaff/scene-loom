@@ -174,12 +174,19 @@ export function SceneStatusResync({ data }: { data: CardData }) {
 
 export function GameResume({ data }: { data: CardData }) {
   const { scene, rehearsalInputRevision, development } = data;
-  const { sync, current, next } = orchestrationState(
+  const state = orchestrationState(
     scene.rehearsalEvents,
     rehearsalInputRevision,
   );
-  const required = sync?.entries.filter((entry) => entry.required) ?? [];
-  const verified = required.filter((entry) => entry.source).length;
+  const { current } = state;
+  // Foundry's current answer outranks the recorded snapshot while it is read.
+  const next = data.workflow?.next ?? state.next;
+  const required = (data.workflow?.entries ?? state.entries).filter(
+    (entry) => entry.required,
+  );
+  const verified = required.filter(
+    (entry) => entry.source || entry.ownerResolved,
+  ).length;
   const latest = development?.latest;
   const checkpoint = development?.next.latest;
   const slices = development?.slices ?? [];
@@ -192,10 +199,8 @@ export function GameResume({ data }: { data: CardData }) {
     sync: 'Asset sync pending',
     resolve: 'Required assets unresolved',
     plan: 'Plan proposal pending',
-    decide: 'Owner plan decision pending',
     publish: 'Placeholder draft pending',
-    'review-draft': 'Independent draft review pending',
-    handoff: 'Draft approved for game implementation',
+    handoff: 'Draft ready. Accept it in Rehearsal, then start implementation',
   }[next];
   return (
     <section className="game-resume">
@@ -232,6 +237,12 @@ export function GameResume({ data }: { data: CardData }) {
                   : current
                     ? 'No required assets selected'
                     : 'Current sync pending'}
+                {data.workflow?.unreachable && (
+                  <span className="workflow-live" data-live="false">
+                    {' '}
+                    · not live
+                  </span>
+                )}
                 {current && required.length > 0 && (
                   <StudioProgress
                     label="Required asset acceptance"

@@ -271,3 +271,34 @@ Desktop Chrome verified; no cross-browser/mobile-first claim. No built-in AI/cha
 - Added **Copy in-game scene review prompt** alongside the approved game handoff. It carries the exact plan and pins, accepts an owner-supplied prototype name for scale, and requests numbered screenshot evidence and a builder correction prompt. Build, lint and the Chrome clipboard workflow passed.
 
 - Added **Copy scene status resync prompt** beside **Where you left off**. An agent inspects Foundry, Rehearsal and the implementation read-only and saves four summaries with the standalone `scene.status.record` operation. The saved report appears as **Last resync** and flags changed storyboard inputs. It does not change workflow state, inputs or checkpoints. Typecheck, lint, formatting, unit tests, build and the seven Chrome tests passed.
+
+## Simplified Rehearsal workflow — 2026-11-18
+
+- One mutable Rehearsal draft per storyboard scene card. Publishing again overwrites it, resets acceptance only when the content changed, and keeps feedback pins. Old revisions remain readable.
+- Loom's chain is now sync, plan, draft link, then **Copy start implementation prompt**. Plan decision, publication and draft review records are history only. The owner agrees to plans in chat and accepts the draft in Rehearsal. Implementation marks the card implemented on a light, relevance-based check.
+- Scene Rehearsal starts with no setup: default data directory, port 4331 with free-port fallback, `runtime.json` discovery for the CLI (which also starts the service) and for Mesh Foundry.
+- Verified with typecheck, lint, format check and unit tests in both repos. The browser tests were not rerun and the old plan-decision browser test path was not updated.
+
+## Design-direction prompts — 2026-11-22
+
+- Repository plan, review and start prompts now require three-lane dated design research, three named candidate directions recorded in the design brief, distinctness from sibling local projects, Impeccable's Direction contract as a gate (review flags absence as material), and library theme tokens overriding defaults. The in-game scene review prompt requires capture, scale and animation evidence, and the game starter adds an observability checklist. Prompt assertions updated; see the verification note in the final report.
+
+## Spec-ready Rehearsal drafts — 2026-11-22
+
+- Plan and draft prompts now ask for a named scale reference, metre dimensions, anchors, walkable/clearance notes and interact/clip cue targets, then a Rehearsal `spec --unapproved` check (no missing dimensions, no unresolved warnings) and recorded content/spec digests. The asset-generation prompt starts 3D prototype work from the approved draft's spec via Foundry's `asset.spec`.
+
+## Live acceptance, owner resolution and fit-loop cleanup — 2026-11-22
+
+- The open card and card actions read Foundry's current acceptance through the service (`GET .../workflow`). The recorded sync is a snapshot kept as evidence. If Foundry cannot be read, the card shows the last recorded state marked **Not live** and nothing blocks. Live differences from the manifest offer the sync action.
+- An owner-clicked card action is checked server-side (`POST .../card-action`). A moved workflow returns the current action and the card refreshes and offers it, instead of the old dead-end message. The check applies nothing.
+- New orchestration stage `owner-resolution` lets the owner mark an unresolved required selection resolved from the card. It keeps the prior manifest entry, survives later syncs, yields to Foundry acceptance, and is refused for agents (`apply` and the CLI token).
+- Draft records gain optional `contentDigest` and `specDigest`; the draft prompt and docs use them instead of the builder note.
+- Retired fit loop: removed `rehearsalState`, `workflowError`, `verifyFoundryAcceptance`, the candidate-review owner-override check and the fit-loop docs. The service rejects new review/draft/candidate/candidate-review/fit events (`LEGACY_RECORD`). Their schemas stay so earlier projects load, and the card keeps showing them as history.
+- Tests: live-versus-snapshot drift and offline fallback, stale card action recovery, owner resolution (owner only, prior preserved, Foundry wins), old-data load with legacy events, digest fields, live-next prompt override.
+
+## Review evidence, design direction, one start command — 2026-11-22
+
+- **Game review evidence.** New orchestration stage `game-review` records an in-game review against the scene's current draft (`draftId`, `reviewer`, `build`, `route`, `verdict` ready or changes-requested, `findings`, optional structured `evidence`: `propCaptures`, `scaleChecks`, `clipChecks`). The schema keeps `evidence` optional so older records load. The service rejects a `ready` verdict unless all three categories are non-empty (`REVIEW_EVIDENCE_REQUIRED`, naming the missing ones); changes-requested reviews need findings only. Previously the in-game review was chat-only and Loom recorded nothing. The review prompt now carries the exact JSON and the rejection warning; the card shows counts per category. Coverage is not checked against plan pieces (only non-emptiness).
+- **Stored design direction.** Optional project-level `designDirection` written via `project.design-direction.set` (content, not approval; whole-model validation, content revision and atomic publication as for every batch). The repository plan prompt records the choice there as well as in the repo brief and reads other Loom projects' `designDirection` (CLI `project list` and `project read`) for anti-sameness. The Project Vision panel shows it read-only. Old projects load without it.
+- **`npm run up`.** `scripts/dev-up.ts` starts Scene Loom, Mesh Foundry and Scene Rehearsal from their sibling checkouts if not already running and prints name, url, pid, data dir and revision, with `stale` when a service's reported revision differs from its checkout's git revision. `-- --status` only prints. It stops nothing. Scene Loom's `runtime.json` now also records pid, port, dataDir, revision and startedAt (extra fields; the CLI ignores them). Mesh Foundry reports no revision, so it is shown as "not reported" and never stale. Exercised end to end against disposable data directories and ports 4441-4443 (started, second run left them alone), then stopped and removed; unit tests cover the table and staleness logic.
+- **Browser gap closed.** New Chrome tests click **Mark Gate resolved (owner)** through the real browser session against a fixture Foundry, assert the card moves on to planning, and assert the **Not live** notice when the fixture Foundry is unreachable. Rendered inspection led to three UI fixes: the stray ring beside "not live" in the progress line, the full-width resolve button, and the duplicated "last recorded state" wording. The same suite exercises the evidence summary and the design direction panel.
