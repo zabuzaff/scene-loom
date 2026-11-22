@@ -55,10 +55,6 @@ async function readLibrary(libraryId: string) {
   return library;
 }
 
-export async function verifyFoundryAcceptance(model: Model) {
-  return accepts(await readLibrary(model.libraryId), model);
-}
-
 function accepts(
   library: z.infer<typeof librarySchema>,
   model: Model,
@@ -179,4 +175,20 @@ export async function readSelectedAcceptances(
       };
     return { name, required, source: { libraryId, assetId, revisionId } };
   });
+}
+
+// True when the exact revision is, right now, an accepted study or model
+// revision with a model file in the live library. Throws if Foundry cannot be
+// read, so callers never treat an unverified source as valid.
+export async function sourceIsAccepted(source: Model) {
+  const library = await readLibrary(source.libraryId);
+  return library.revisions.some(
+    (rev) =>
+      rev.id === source.revisionId &&
+      rev.assetId === source.assetId &&
+      (rev.stage === 'study' || rev.stage === 'model') &&
+      !rev.fixture &&
+      rev.files.some(({ kind }) => kind === 'model') &&
+      accepts(library, source, rev.stage),
+  );
 }

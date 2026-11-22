@@ -17,8 +17,12 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUpRight, PencilLine, ChevronDown, Shapes, X } from 'lucide-react';
 import type { ProjectData, SceneData } from '../shared/schema';
-import { orchestrationActions, type OrchestrationCopyAction } from './api';
-import { orchestrationState } from '../shared/orchestration';
+import {
+  orchestrationActions,
+  type OrchestrationCopyAction,
+  type WorkflowStatus,
+} from './api';
+import { evidenceCounts, orchestrationState } from '../shared/orchestration';
 import type { sceneDevelopment } from '../shared/development';
 import {
   DevelopmentAction,
@@ -43,6 +47,13 @@ export type CardData = {
   rehearsalInputRevision: number;
   assetSuggestions?: NonNullable<ProjectData['assetSuggestions']>;
   toggle: (id: string) => void;
+  // Live acceptance read for the open card; undefined until it arrives.
+  workflow?: WorkflowStatus;
+  resolve: (
+    id: string,
+    name: string,
+    report?: (message: string) => void,
+  ) => void;
   copy: (
     id: string,
     action:
@@ -72,6 +83,7 @@ export const SceneCard = memo(function SceneCard({
           ...data,
           copy: (sceneId, action, key, sliceId) =>
             data.copy(sceneId, action, key, sliceId, setNotice),
+          resolve: (sceneId, name) => data.resolve(sceneId, name, setNotice),
         }
       : data;
   const { mainAssetId, description, rehearsalBrief } = data.scene;
@@ -527,32 +539,83 @@ function SceneDialog({
   );
 }
 
+const plural = (count: number, noun: string) =>
+  `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+function LiveMarker({ workflow }: { workflow?: WorkflowStatus }) {
+  if (!workflow) return null;
+  const time = new Date(workflow.readAt).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return workflow.live ? (
+    <p className="workflow-live" data-live="true">
+      Live from Mesh Foundry · read {time}
+      {workflow.drifted && ' · Foundry changed since the last sync'}
+    </p>
+  ) : workflow.unreachable ? (
+    <p className="workflow-live" data-live="false">
+      Not live · {workflow.reason}
+    </p>
+  ) : (
+    <p className="workflow-live">{workflow.reason}</p>
+  );
+}
+
 function RehearsalActions({ data }: { data: CardData }) {
-  const { scene, rehearsalInputRevision, expanded } = data;
+  const { scene, rehearsalInputRevision, expanded, workflow } = data;
+  const state = orchestrationState(
+    scene.rehearsalEvents,
+    rehearsalInputRevision,
+  );
   const {
     sync,
     plan,
     decision,
     draft,
     review,
-    next,
+    gameReview,
     current,
     draftId,
     draftUrl,
-  } = orchestrationState(scene.rehearsalEvents, rehearsalInputRevision);
-  const unresolved = sync?.entries.filter((entry) => !entry.source) ?? [];
-  const missing = unresolved.filter((entry) => entry.required);
+  } = state;
+  // The open card shows Foundry's current answer; the recorded manifest is
+  // only the fallback and the history.
+  const next = (expanded && workflow?.next) || state.next;
+  const entries = (expanded && current && workflow?.entries) || state.entries;
+  const unresolved = entries.filter((entry) => !entry.source);
+  const missing = unresolved.filter(
+    (entry) => entry.required && !entry.ownerResolved,
+  );
   const action = next === 'resolve' ? 'sync' : next;
+  const counts = evidenceCounts(gameReview?.evidence);
   const label = action && orchestrationActions[action];
 
   return (
     <section className="scene-rehearsal-actions scene-asset-action nodrag">
       {expanded && <h3>Scene rehearsal</h3>}
+      {expanded && <LiveMarker workflow={workflow} />}
       {next === 'resolve' && (
-        <p>
-          Waiting for {missing.map((entry) => entry.name).join(', ')}. Resolve
-          the required selection before syncing again.
-        </p>
+        <div className="workflow-resolve">
+          <p>
+            Waiting for {missing.map((entry) => entry.name).join(', ')}. Foundry
+            has no accepted 3D revision for{' '}
+            {missing.length === 1 ? 'it' : 'them'}.
+          </p>
+          {missing.map((entry) => (
+            <button
+              key={entry.name}
+              type="button"
+              className="studio-copy-action nodrag"
+              onClick={(event) => {
+                event.stopPropagation();
+                data.resolve(scene.id, entry.name);
+              }}
+            >
+              Mark {entry.name} resolved (owner)
+            </button>
+          ))}
+        </div>
       )}
       {label && action && (
         <>
@@ -588,33 +651,37 @@ function RehearsalActions({ data }: { data: CardData }) {
       {expanded && sync && (
         <section className="orchestration-manifest">
           <h4>
-            {current
-              ? 'Accepted-model manifest'
-              : 'Earlier accepted-model manifest'}
+            {!current
+              ? 'Earlier accepted-model manifest'
+              : workflow?.live
+                ? 'Accepted-model manifest (live)'
+                : 'Accepted-model manifest'}
           </h4>
           <p>
             Foundry library <code>{sync.libraryId}</code>
           </p>
-          {sync.entries.length ? (
+          {entries.length ? (
             <ul>
-              {[
-                ...unresolved,
-                ...sync.entries.filter((entry) => entry.source),
-              ].map((entry, index) => (
-                <li key={index}>
-                  <strong>{entry.name}</strong>
-                  {entry.required ? '' : ' · Optional'}
-                  {entry.source ? (
-                    <p>
-                      <code>
-                        {entry.source.assetId} / {entry.source.revisionId}
-                      </code>
-                    </p>
-                  ) : (
-                    <p>{entry.issue}</p>
-                  )}
-                </li>
-              ))}
+              {[...unresolved, ...entries.filter((entry) => entry.source)].map(
+                (entry, index) => (
+                  <li key={index}>
+                    <strong>{entry.name}</strong>
+                    {entry.required ? '' : ' · Optional'}
+                    {entry.source ? (
+                      <p>
+                        <code>
+                          {entry.source.assetId} / {entry.source.revisionId}
+                        </code>
+                        {entry.ownerResolved && ' · Resolved by owner'}
+                      </p>
+                    ) : entry.ownerResolved ? (
+                      <p>Resolved by owner</p>
+                    ) : (
+                      <p>{entry.issue}</p>
+                    )}
+                  </li>
+                ),
+              )}
             </ul>
           ) : (
             <p>No assets selected for this scene.</p>
@@ -685,6 +752,36 @@ function RehearsalActions({ data }: { data: CardData }) {
           <ExternalRevision link={draftUrl!}>
             Open draft {draftId?.slice(0, 10)}
           </ExternalRevision>
+          {draft.stage === 'draft' && draft.contentDigest && (
+            <p>
+              Content <code>{draft.contentDigest.slice(0, 12)}</code>
+              {draft.specDigest && (
+                <>
+                  {' '}
+                  · Spec <code>{draft.specDigest.slice(0, 12)}</code>
+                </>
+              )}
+            </p>
+          )}
+          {gameReview && (
+            <div className="game-review-summary">
+              <p>
+                In-game review:{' '}
+                {gameReview.verdict === 'ready' ? 'Ready' : 'Changes requested'}{' '}
+                · {gameReview.reviewer}
+              </p>
+              <p>
+                Evidence: {plural(counts.propCaptures, 'prop capture')} ·{' '}
+                {plural(counts.scaleChecks, 'scale check')} ·{' '}
+                {plural(counts.clipChecks, 'clip check')}
+              </p>
+              <ul>
+                {gameReview.findings.map((finding, index) => (
+                  <li key={index}>{finding}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {review && (
             <>
               <p>

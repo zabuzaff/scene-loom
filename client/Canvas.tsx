@@ -35,7 +35,9 @@ import {
   orchestrationActions,
   orchestrationPrompt,
   type AgentInfo,
+  type CardActionCheck,
   type OrchestrationCopyAction,
+  type WorkflowStatus,
 } from './api';
 import { SceneCard, type SceneNode } from './SceneCard';
 import { arrangeScenes } from './arrange';
@@ -112,7 +114,8 @@ function CanvasInner({
     [zoom, setZoom] = useState(initialViewport?.zoom ?? 1),
     [saving, setSaving] = useState(false),
     [arranging, setArranging] = useState(false),
-    [saveError, setSaveError] = useState(false);
+    [saveError, setSaveError] = useState(false),
+    [workflows, setWorkflows] = useState<Record<string, WorkflowStatus>>({});
   const flow = useReactFlow<SceneNode>();
   const latest = useRef(project);
   latest.current = project;
@@ -185,6 +188,59 @@ function CanvasInner({
     },
     [expanded, openScene],
   );
+  // The open card reads Foundry's current acceptance rather than trusting the
+  // recorded snapshot, and re-reads while it stays open.
+  useEffect(() => {
+    if (!expanded || !project.meshFoundryEnabled) return;
+    let stopped = false;
+    const load = () =>
+      api<WorkflowStatus>(
+        `projects/${encodeURIComponent(project.id)}/scenes/${encodeURIComponent(expanded)}/workflow`,
+      )
+        .then((workflow) => {
+          if (!stopped)
+            setWorkflows((old) => ({ ...old, [expanded]: workflow }));
+        })
+        .catch(() => undefined);
+    void load();
+    const timer = setInterval(() => void load(), 20000);
+    window.addEventListener('focus', load);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener('focus', load);
+    };
+  }, [
+    expanded,
+    project.id,
+    project.contentRevision,
+    project.meshFoundryEnabled,
+  ]);
+  const resolve = useCallback(
+    async (id: string, name: string, report = notify) => {
+      const p = latest.current;
+      try {
+        await api(
+          `projects/${encodeURIComponent(p.id)}/scenes/${encodeURIComponent(id)}/owner-resolution`,
+          'POST',
+          { name },
+        );
+        await refresh();
+        const workflow = await api<WorkflowStatus>(
+          `projects/${encodeURIComponent(p.id)}/scenes/${encodeURIComponent(id)}/workflow`,
+        ).catch(() => undefined);
+        if (workflow) setWorkflows((old) => ({ ...old, [id]: workflow }));
+        report(`${name} marked resolved. The earlier state stays in history.`);
+      } catch (e) {
+        report(
+          e instanceof RequestError
+            ? e.message
+            : 'Could not save the resolution. Try again.',
+        );
+      }
+    },
+    [notify, refresh],
+  );
   const copy = useCallback(
     async (
       id: string,
@@ -239,14 +295,51 @@ function CanvasInner({
           return;
         }
         if (action !== 'assets' && action !== 'continue' && action !== 'edit') {
-          const prompt =
-            p.meshFoundryEnabled && orchestrationPrompt(info, p, s, action);
+          if (!p.meshFoundryEnabled) return;
+          // The owner's click is checked against freshly read state. If the
+          // workflow moved on, the card refreshes and offers the new action.
+          const base = `projects/${encodeURIComponent(p.id)}/scenes/${encodeURIComponent(id)}`;
+          const check = await api<CardActionCheck>(
+            `${base}/card-action`,
+            'POST',
+            { action },
+          ).catch(() => undefined);
+          let project = p;
+          let scene = s;
+          if (check) {
+            setWorkflows((old) => ({ ...old, [id]: check }));
+            if (check.status === 'changed') {
+              await refresh();
+              report(
+                `The scene moved on. The card now offers: ${orchestrationActions[check.action].label}.`,
+              );
+              return;
+            }
+            project = await api<ProjectData>(
+              `projects/${encodeURIComponent(p.id)}`,
+            );
+            scene = project.scenes.find((item) => item.id === id) ?? s;
+          }
+          const prompt = orchestrationPrompt(
+            info,
+            project,
+            scene,
+            action,
+            check?.next,
+          );
           if (!prompt) {
-            report('The scene workflow changed. Use the current card action.');
+            await refresh();
+            report('The scene moved on. Use the updated card action.');
             return;
           }
           await navigator.clipboard.writeText(prompt);
-          report('Prompt copied. ' + orchestrationActions[action].help);
+          report(
+            check?.status === 'unverified'
+              ? `Not live: ${check.reason} Prompt copied, but its state is not verified.`
+              : !check
+                ? 'Not live: the current state could not be checked. Prompt copied, but its state is not verified.'
+                : 'Prompt copied. ' + orchestrationActions[action].help,
+          );
           return;
         }
         await navigator.clipboard.writeText(
@@ -264,7 +357,7 @@ function CanvasInner({
         report('Clipboard unavailable. Allow clipboard access and try again.');
       }
     },
-    [info, notify],
+    [info, notify, refresh],
   );
   useEffect(() => {
     const game = /(?:\b(?:video ?games?|games?)$|^games? \()/i.test(
@@ -308,6 +401,8 @@ function CanvasInner({
             openScene,
             sceneTitles,
             copy,
+            resolve,
+            workflow: workflows[scene.id],
             rehearsalEnabled: !!project.meshFoundryEnabled,
             rehearsalInputRevision:
               project.rehearsalInputRevision ?? project.contentRevision,
@@ -322,7 +417,17 @@ function CanvasInner({
         };
       }),
     );
-  }, [project, expanded, selectedSlice, recent, toggle, copy, openScene]);
+  }, [
+    project,
+    expanded,
+    selectedSlice,
+    recent,
+    toggle,
+    copy,
+    resolve,
+    workflows,
+    openScene,
+  ]);
   const routingNodes = arrangement.current?.routingNodes ?? nodes;
   const edges = useMemo<Edge[]>(() => {
     const byId = new Map(

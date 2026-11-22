@@ -5,13 +5,18 @@ import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import {
+  missingEvidence,
+  nameKey,
   orchestrationState,
+  overlayResolutions,
+  type EffectiveEntry,
+  type OrchestrationAction,
   type OrchestrationRecord,
 } from '../shared/orchestration.js';
 import { sameModel } from '../shared/rehearsal.js';
 import type { ProjectData, SceneData } from '../shared/schema.js';
-import { readSelectedAcceptances } from './foundry.js';
-import { fail } from './store.js';
+import { readSelectedAcceptances, sourceIsAccepted } from './foundry.js';
+import { fail, StudioError } from './store.js';
 
 export function linkedLibrary(project: ProjectData, scene: SceneData) {
   const selected =
@@ -67,6 +72,114 @@ export async function acceptancePreview(
   return { libraryId, inputRevision, entries };
 }
 
+export type WorkflowAction = OrchestrationAction;
+export type WorkflowStatus = {
+  // true when entries were read from Foundry just now, false when they are
+  // the last recorded snapshot because Foundry could not be read.
+  live: boolean;
+  readAt: string;
+  reason?: string;
+  // true only when Foundry itself could not be reached or read.
+  unreachable?: boolean;
+  libraryId?: string;
+  entries: EffectiveEntry[];
+  recorded: EffectiveEntry[];
+  drifted: boolean;
+  current: boolean;
+  next: OrchestrationAction | 'resolve';
+  action: WorkflowAction;
+};
+
+// The authoritative answer to "what does this scene need next". Foundry's
+// current acceptance wins over the stored snapshot, which stays as evidence.
+// When Foundry cannot be read the answer degrades to the snapshot and says
+// so; it never throws and never blocks the owner.
+export async function workflowStatus(
+  project: ProjectData,
+  scene: SceneData,
+): Promise<WorkflowStatus> {
+  const inputRevision =
+    project.rehearsalInputRevision ?? project.contentRevision;
+  const state = orchestrationState(scene.rehearsalEvents, inputRevision);
+  const base = {
+    readAt: new Date().toISOString(),
+    recorded: state.entries,
+    current: state.current,
+  };
+  const settle = (next: WorkflowStatus['next']) =>
+    ({
+      ...base,
+      next,
+      action: next === 'resolve' ? 'sync' : next,
+    }) as const;
+  let preview;
+  try {
+    preview = await acceptancePreview(project, scene);
+  } catch (error) {
+    const unreachable =
+      !(error instanceof StudioError) || error.code === 'FOUNDRY_UNAVAILABLE';
+    const reason = unreachable
+      ? 'Mesh Foundry could not be read, so this shows the last recorded state.'
+      : (error as StudioError).message;
+    return {
+      ...settle(state.next),
+      live: false,
+      unreachable,
+      reason,
+      entries: state.entries,
+      drifted: false,
+      libraryId: state.sync?.libraryId,
+    };
+  }
+  const entries = overlayResolutions(
+    preview.entries,
+    state.resolutions,
+    undefined,
+  );
+  const drifted =
+    !!state.sync &&
+    state.current &&
+    (preview.libraryId !== state.sync.libraryId ||
+      !isDeepStrictEqual(entries, state.entries));
+  const next = !state.sync || !state.current || drifted ? 'sync' : state.next;
+  return {
+    ...settle(next),
+    live: true,
+    entries,
+    drifted,
+    libraryId: preview.libraryId,
+  };
+}
+
+// An owner-initiated card action meets current state. An action that still
+// matches is confirmed; otherwise the response carries the current action so
+// the card can refresh and offer it. Nothing is applied from here.
+export async function checkCardAction(
+  project: ProjectData,
+  scene: SceneData,
+  requested: string,
+) {
+  const status = await workflowStatus(project, scene);
+  const base = { requested, contentRevision: project.contentRevision };
+  // Without a live read nothing is verified: say so, and let the owner copy
+  // the prompt anyway.
+  if (!status.live)
+    return {
+      ...base,
+      ...status,
+      status: 'unverified' as const,
+      reason: status.reason ?? 'The current state could not be verified.',
+    };
+  const matches =
+    requested === status.action ||
+    (requested === 'review-game' && status.action === 'handoff');
+  return {
+    ...base,
+    ...status,
+    status: matches ? ('current' as const) : ('changed' as const),
+  };
+}
+
 const draftRead = z.object({
   digest: z.string(),
   scene: z.object({
@@ -97,7 +210,8 @@ export async function validateOrchestration(
   const events = scene.rehearsalEvents ?? [];
   const inputRevision =
     project.rehearsalInputRevision ?? project.contentRevision;
-  const { sync, plan, next } = orchestrationState(events, inputRevision);
+  const state = orchestrationState(events, inputRevision);
+  const { sync, plan, next } = state;
   const { record } = event;
   function requireCurrent(
     condition: unknown,
@@ -135,6 +249,43 @@ export async function validateOrchestration(
     );
     return;
   }
+  if (record.stage === 'owner-resolution') {
+    requireCurrent(
+      sync && next !== 'sync' && record.syncId === sync.eventId,
+      'Sync the scene assets first; the resolution must cite the current manifest.',
+    );
+    const target = sync.entries.filter(
+      (entry) => nameKey(entry.name) === nameKey(record.name),
+    );
+    requireCurrent(
+      target.length === 1 &&
+        target[0].required &&
+        !target[0].source &&
+        isDeepStrictEqual(record.prior, target[0]),
+      'Name one required selection from the current manifest that has no accepted source, with its recorded state.',
+    );
+    // A pinned source needs live proof; with Foundry unreachable only a
+    // waiver (no source) may be recorded. A newer resolution supersedes an
+    // older one for the same name in this sync.
+    if (record.source) {
+      requireCurrent(
+        record.source.libraryId === sync.libraryId,
+        'The source must be in the linked library.',
+      );
+      const accepted = await sourceIsAccepted(record.source).catch(() =>
+        fail(
+          'FOUNDRY_UNAVAILABLE',
+          'Foundry could not be read, so only a waiver without a source can be recorded.',
+          503,
+        ),
+      );
+      requireCurrent(
+        accepted,
+        'That revision is not currently accepted in the linked Foundry library.',
+      );
+    }
+    return;
+  }
   requireCurrent(
     next !== 'resolve' && next !== 'sync' && sync,
     'Sync all required scene assets first.',
@@ -143,7 +294,10 @@ export async function validateOrchestration(
     const preview = await acceptancePreview(project, scene);
     if (
       preview.libraryId !== sync.libraryId ||
-      !isDeepStrictEqual(preview.entries, sync.entries)
+      !isDeepStrictEqual(
+        overlayResolutions(preview.entries, state.resolutions, undefined),
+        state.entries,
+      )
     )
       fail(
         'STALE_FOUNDRY',
@@ -161,6 +315,21 @@ export async function validateOrchestration(
       'Plan approval, publication and draft review are retired. Save the plan, then a draft record once Rehearsal holds the draft.',
       409,
     );
+  if (record.stage === 'game-review') {
+    requireCurrent(
+      state.draft && record.draftId === state.draftId,
+      'Record the review against the scene’s current Rehearsal draft.',
+    );
+    const missing = missingEvidence(record.evidence);
+    if (record.verdict === 'ready' && missing.length)
+      fail(
+        'REVIEW_EVIDENCE_REQUIRED',
+        `A ready game review needs non-empty evidence for every category. Missing: ${missing.join(', ')}.`,
+        422,
+        'Add evidence.propCaptures [{piece, captureRef}], evidence.scaleChecks [{piece, against, result}] and evidence.clipChecks [{piece, clip, action, result}], or record changes-requested with findings.',
+      );
+    return;
+  }
   if (record.stage === 'plan') {
     requireCurrent(
       record.syncId === sync.eventId,
@@ -174,13 +343,14 @@ export async function validateOrchestration(
             piece.size.every((value) => value > 0 && value <= 100) &&
             piece.scale.every((value) => value > 0) &&
             (!piece.source ||
-              sync.entries.some((entry) =>
+              state.entries.some((entry) =>
                 sameModel(entry.source, piece.source!),
               )),
         ) &&
-        sync.entries.every(
+        state.entries.every(
           (entry) =>
             !entry.required ||
+            (entry.ownerResolved && !entry.source) ||
             pieces.some(
               (piece) => piece.source && sameModel(entry.source, piece.source),
             ),

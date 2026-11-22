@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { dataRoot } from '../shared/config.js';
@@ -45,9 +46,29 @@ try {
     dev: process.argv.includes('--dev'),
   });
   await app.listen({ host: '127.0.0.1', port });
+  // Same shape the sibling services publish, so scripts/dev-up can report the
+  // running code revision. Older readers only use url and token.
+  const git = (...args: string[]) => {
+    try {
+      return execFileSync('git', args, {
+        cwd: import.meta.dirname,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      return '';
+    }
+  };
   await atomicWrite(join(root, 'runtime.json'), {
     url: `http://127.0.0.1:${port}`,
     token,
+    pid: process.pid,
+    port,
+    dataDir: root,
+    revision:
+      (git('rev-parse', '--short', 'HEAD') || 'unknown') +
+      (git('status', '--porcelain') ? '+uncommitted' : ''),
+    startedAt: new Date().toISOString(),
   });
   const old = cleanup;
   cleanup = async () => {

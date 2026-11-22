@@ -368,7 +368,15 @@ test('game card syncs, plans, links one draft and starts implementation', async 
       ],
     });
   };
-  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  // Card actions are checked against fresh state before copying, so wait for
+  // the clipboard to change rather than reading it at once.
+  let seen = '';
+  const clipboard = async () => {
+    const read = () => page.evaluate(() => navigator.clipboard.readText());
+    await expect.poll(read).not.toBe(seen);
+    seen = await read();
+    return seen;
+  };
   try {
     expect(
       (await call('/settings', 'PUT', { meshFoundryEnabled: true })).ok,
@@ -381,7 +389,6 @@ test('game card syncs, plans, links one draft and starts implementation', async 
     await open();
     const scene = page.getByRole('article', { name: 'Enter the garden' });
     const modal = page.getByRole('dialog', { name: 'Enter the garden' });
-    const positions = read().positions;
     const width = () =>
       scene.evaluate((element) => (element as HTMLElement).offsetWidth);
     await expect.poll(width).toBe(300);
@@ -404,6 +411,27 @@ test('game card syncs, plans, links one draft and starts implementation', async 
     await expect(
       modal.getByRole('heading', { name: 'Accepted-model manifest' }),
     ).toBeVisible();
+    // A layout-only refresh must not re-fire the live Foundry read.
+    let reads = 0;
+    page.on('request', (request) => {
+      if (request.url().includes('/workflow')) reads++;
+    });
+    await page.waitForTimeout(500);
+    const before = reads;
+    const board = read();
+    expect(
+      (
+        await call('/layout', 'PATCH', {
+          expectedLayoutRevision: board.layoutRevision,
+          positions: { garden: { x: 420, y: 260 } },
+        })
+      ).ok,
+    ).toBe(true);
+    await expect
+      .poll(() => read().positions.garden)
+      .toEqual({ x: 420, y: 260 });
+    await page.waitForTimeout(1500);
+    expect(reads).toBe(before);
     await modal
       .getByRole('button', { name: 'Copy scene orchestrator planner prompt' })
       .click();
@@ -466,6 +494,50 @@ test('game card syncs, plans, links one draft and starts implementation', async 
     await expect(
       modal.getByRole('button', { name: 'Copy rehearsal draft prompt' }),
     ).toHaveCount(0);
+    // A passing in-game review must carry evidence in every category.
+    const gameRecord = {
+      stage: 'game-review',
+      draftId: digest,
+      reviewer: 'reviewer',
+      build: 'build-42',
+      route: '/garden',
+      verdict: 'ready',
+      findings: ['SS1 Gate scale matches the baseline.'],
+    };
+    const rejected = await record('game-review-bare', gameRecord);
+    expect(rejected.status).toBe(422);
+    expect((await rejected.json()).error.code).toBe('REVIEW_EVIDENCE_REQUIRED');
+    expect(
+      (
+        await record('game-review', {
+          ...gameRecord,
+          evidence: {
+            propCaptures: [
+              { piece: 'gate', captureRef: 'captures/gate-free-cam.png' },
+              { piece: 'gate', captureRef: 'captures/gate-side.png' },
+            ],
+            scaleChecks: [
+              { piece: 'gate', against: 'Hero 1.8 m', result: '2.0 m tall' },
+            ],
+            clipChecks: [
+              {
+                piece: 'gate',
+                clip: 'open',
+                action: 'Select the gate',
+                result: 'Matches; idle is still',
+              },
+            ],
+          },
+        })
+      ).ok,
+    ).toBe(true);
+    const summary = modal.locator('.game-review-summary');
+    await expect(summary).toContainText('In-game review: Ready');
+    await expect(summary).toContainText(
+      '2 prop captures · 1 scale check · 1 clip check',
+    );
+    await summary.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'test-results/game-review-evidence.png' });
     await modal
       .getByRole('button', { name: 'Copy start implementation prompt' })
       .click();
@@ -514,6 +586,8 @@ test('game card syncs, plans, links one draft and starts implementation', async 
     );
     expect(gameReview).toContain('orbit, pan, zoom, or focus on selection');
     expect(gameReview).toContain('Report any inspection limits.');
+    expect(gameReview).toContain('Capture every prop with a free camera');
+    expect(gameReview).toContain('flag anything moving while idle or gliding');
     expect(gameReview).toContain(
       'If the field is blank or the reference cannot be resolved, continue the review and flag scale judgments that need a reference.',
     );
@@ -530,6 +604,8 @@ test('game card syncs, plans, links one draft and starts implementation', async 
       /3D prototype name for scale reference:$/,
     );
     expect(gameReview).not.toContain('Record one rehearsal.record event');
+    expect(gameReview).toContain('REVIEW_EVIDENCE_REQUIRED');
+    expect(gameReview).toContain('"stage":"game-review"');
     await page.screenshot({ path: 'test-results/progress-game-expanded.png' });
     await page.setViewportSize({ width: 390, height: 650 });
     await expect(
@@ -568,15 +644,238 @@ test('game card syncs, plans, links one draft and starts implementation', async 
     const heading = await scene
       .getByRole('heading', { name: 'Enter the garden' })
       .boundingBox();
+    const beforeDrag = read().positions;
     await page.mouse.move(heading!.x + 20, heading!.y + 10);
     await page.mouse.down();
     await page.mouse.move(heading!.x + 110, heading!.y + 42, { steps: 8 });
     await page.mouse.up();
-    await expect.poll(() => read().positions).not.toEqual(positions);
+    await expect.poll(() => read().positions).not.toEqual(beforeDrag);
     await page.getByRole('button', { name: 'Zoom in' }).click();
     await expect.poll(() => viewport.getAttribute('style')).not.toBe(transform);
   } finally {
     fixture.close();
+    await clean();
+  }
+});
+
+// A minimal Foundry that knows one asset ("Gate") and has accepted nothing.
+async function unacceptedFoundry() {
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/agent/projects/fixture_foundry')
+      res.end(
+        JSON.stringify({
+          id: 'fixture_foundry',
+          assets: [{ id: 'gate', name: 'Gate' }],
+          accepted: {},
+          acceptance: [],
+          revisions: [],
+        }),
+      );
+    else {
+      res.statusCode = 404;
+      res.end('{}');
+    }
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('Fixture did not start');
+  const fixtureRoot = join(root, 'foundry-fixture');
+  await mkdir(fixtureRoot, { recursive: true });
+  await writeFile(
+    join(fixtureRoot, 'runtime.json'),
+    JSON.stringify({
+      url: `http://127.0.0.1:${address.port}`,
+      token: 'fixture',
+    }),
+  );
+  return {
+    stop: () => {
+      server.closeAllConnections();
+      return new Promise<void>((done) => server.close(() => done()));
+    },
+  };
+}
+
+// Enables handoff, selects the required Gate and saves the live preview as
+// the scene's sync record, the way an agent would.
+async function selectAndSyncGate(id: string, sceneId: string) {
+  const runtime = JSON.parse(
+    await readFile(join(root, 'runtime.json'), 'utf8'),
+  );
+  const call = (route: string, method = 'GET', body?: unknown) =>
+    fetch(`${runtime.url}/api/projects/${id}${route}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${runtime.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  const json = async (response: Response) => (await response.json()).data;
+  expect(
+    (await call('/settings', 'PUT', { meshFoundryEnabled: true })).ok,
+  ).toBe(true);
+  const project = await json(await call(''));
+  const patch = await call('/apply', 'POST', {
+    schemaVersion: 1,
+    projectId: id,
+    expectedContentRevision: project.contentRevision,
+    requestId: randomUUID(),
+    operations: [
+      {
+        type: 'scene.patch',
+        id: sceneId,
+        changes: {
+          selectedAssets: [
+            {
+              name: 'Gate',
+              required: true,
+              source: {
+                libraryId: 'fixture_foundry',
+                assetId: 'gate',
+                revisionId: 'prototype',
+              },
+            },
+          ],
+        },
+      },
+    ],
+  });
+  expect(patch.ok).toBe(true);
+  const preview = await json(await call(`/scenes/${sceneId}/accepted-assets`));
+  const current = await json(await call(''));
+  const sync = await call('/apply', 'POST', {
+    schemaVersion: 1,
+    projectId: id,
+    expectedContentRevision: current.contentRevision,
+    requestId: randomUUID(),
+    operations: [
+      {
+        type: 'rehearsal.record',
+        id: sceneId,
+        afterEventId: null,
+        event: {
+          kind: 'orchestration',
+          eventId: 'sync',
+          record: { stage: 'sync', ...preview },
+        },
+      },
+    ],
+  });
+  expect(sync.ok).toBe(true);
+  return preview;
+}
+
+test('the owner resolves a required selection from the card through the real browser session', async ({
+  page,
+}) => {
+  const { id, open, clean } = await board(page, true);
+  const foundry = await unacceptedFoundry();
+  try {
+    const preview = await selectAndSyncGate(id, 'garden');
+    expect(preview.entries[0]).toMatchObject({ name: 'Gate', required: true });
+    expect(preview.entries[0].source).toBeUndefined();
+    await open();
+    await page
+      .getByRole('article', { name: 'Enter the garden' })
+      .getByRole('button', { name: 'Open Enter the garden' })
+      .click();
+    const modal = page.getByRole('dialog', { name: 'Enter the garden' });
+    await expect(modal.getByText(/Waiting for Gate/)).toBeVisible();
+    await expect(
+      modal.getByRole('button', {
+        name: 'Copy scene orchestrator planner prompt',
+      }),
+    ).toHaveCount(0);
+    await page.screenshot({ path: 'test-results/owner-resolve-before.png' });
+    await modal
+      .getByRole('button', { name: 'Mark Gate resolved (owner)' })
+      .click();
+    // The service accepted the owner cookie and the card moved on to planning.
+    await expect(modal.getByText(/Waiting for Gate/)).toHaveCount(0);
+    await expect(
+      modal.getByRole('button', { name: 'Mark Gate resolved (owner)' }),
+    ).toHaveCount(0);
+    await expect(
+      modal.getByRole('button', {
+        name: 'Copy scene orchestrator planner prompt',
+      }),
+    ).toBeVisible();
+    await expect(modal.getByText('Resolved by owner')).toBeVisible();
+    await page.screenshot({ path: 'test-results/owner-resolve-after.png' });
+  } finally {
+    await foundry.stop();
+    await clean();
+  }
+});
+
+test('the card says Not live when Mesh Foundry cannot be reached', async ({
+  page,
+}) => {
+  const { id, open, clean } = await board(page, true);
+  const foundry = await unacceptedFoundry();
+  try {
+    await selectAndSyncGate(id, 'garden');
+    await foundry.stop();
+    await open();
+    await page
+      .getByRole('article', { name: 'Enter the garden' })
+      .getByRole('button', { name: 'Open Enter the garden' })
+      .click();
+    const modal = page.getByRole('dialog', { name: 'Enter the garden' });
+    await expect(modal.getByText(/Not live/)).toBeVisible();
+    await expect(modal.getByText(/last recorded state/)).toBeVisible();
+    // It never blocks the owner: the recorded state still offers the action.
+    await expect(
+      modal.getByRole('button', { name: 'Mark Gate resolved (owner)' }),
+    ).toBeVisible();
+    await page.screenshot({ path: 'test-results/not-live.png' });
+  } finally {
+    await clean();
+  }
+});
+
+test('the Project Vision panel shows the stored design direction read-only', async ({
+  page,
+}) => {
+  const { publish, open, clean } = await board(page);
+  try {
+    publish({
+      type: 'project.design-direction.set',
+      designDirection: {
+        name: 'Signal Ledger',
+        summary: 'Dense ink-on-paper tables with one hot accent.',
+        palette: ['#101418 ink', '#f2efe6 paper', '#ff4f1f accent'],
+        typePairing: 'Space Grotesk headings, IBM Plex Mono data',
+        layoutIdea: 'Left rail index with a wide ledger column.',
+        sources: [
+          {
+            url: 'https://example.com/ledger',
+            observedTrait: 'Hairline rules',
+          },
+        ],
+        rejectedAlternatives: ['Glassy dashboard: too close to a sibling.'],
+        chosenAt: '2026-11-22T10:00:00.000Z',
+      },
+    });
+    await open();
+    await page
+      .getByRole('button', { name: /Project Vision/ })
+      .first()
+      .click();
+    const panel = page.getByRole('complementary', { name: 'Project Vision' });
+    const direction = panel.getByRole('region', { name: 'Design direction' });
+    await expect(direction).toContainText('Signal Ledger');
+    await expect(direction).toContainText('#ff4f1f accent');
+    await expect(direction).toContainText('Hairline rules');
+    await expect(direction.getByRole('button')).toHaveCount(0);
+    await direction.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'test-results/design-direction.png' });
+  } finally {
     await clean();
   }
 });

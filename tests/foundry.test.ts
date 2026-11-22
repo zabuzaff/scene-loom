@@ -3,10 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import {
-  readSelectedAcceptances,
-  verifyFoundryAcceptance,
-} from '../server/foundry.js';
+import { readSelectedAcceptances } from '../server/foundry.js';
 
 test('owner acceptance must cover the exact eligible Foundry revision', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'loom-foundry-'));
@@ -52,13 +49,23 @@ test('owner acceptance must cover the exact eligible Foundry revision', async (t
       return Response.json(library);
     },
   );
-  assert.equal(await verifyFoundryAcceptance(model), false);
+  const pin = {
+    id: 'room',
+    title: 'Room',
+    notes: '',
+    description: '',
+    supportingAssetIds: [],
+    selectedAssets: [{ name: 'Desk', required: true, source: model }],
+  };
+  const accepted = async () =>
+    !!(await readSelectedAcceptances(pin, 'library'))[0].source;
+  assert.equal(await accepted(), false);
   library.accepted.desk = 'study';
-  assert.equal(await verifyFoundryAcceptance(model), false);
+  assert.equal(await accepted(), false);
   library.accepted.desk = 'first';
-  assert.equal(await verifyFoundryAcceptance(model), true);
+  assert.equal(await accepted(), true);
   first.fixture = true;
-  assert.equal(await verifyFoundryAcceptance(model), false);
+  assert.equal(await accepted(), false);
   first.fixture = false;
   const scene = {
     id: 'room',

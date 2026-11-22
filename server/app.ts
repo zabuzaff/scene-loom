@@ -1,4 +1,12 @@
-import { acceptancePreview } from './orchestration.js';
+import {
+  acceptancePreview,
+  checkCardAction,
+  workflowStatus,
+} from './orchestration.js';
+import { sourceIsAccepted } from './foundry.js';
+import { nameKey, orchestrationState } from '../shared/orchestration.js';
+import { Model } from '../shared/rehearsal.js';
+import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -26,6 +34,12 @@ export async function createApp(options: {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   const origins = new Set([...hosts].map((h) => `http://${h}`));
   const clients = new Set<ServerResponse>();
+  // Owner secret: per service start, never written to runtime.json, never in a
+  // response body. Only the browser session flow sets it, as an HttpOnly cookie.
+  const ownerSecret = randomBytes(32).toString('hex');
+  const ownerEqual = (v: string) =>
+    Buffer.byteLength(v) === Buffer.byteLength(ownerSecret) &&
+    timingSafeEqual(Buffer.from(v), Buffer.from(ownerSecret));
   const equal = (v: string) =>
     Buffer.byteLength(v) === Buffer.byteLength(token) &&
     timingSafeEqual(Buffer.from(v), Buffer.from(token));
@@ -92,11 +106,15 @@ export async function createApp(options: {
     });
   });
   const ok = <T>(data: T) => ({ success: true, data });
-  app.get('/api/session', async (_req, reply) => {
-    reply.header(
-      'Set-Cookie',
-      `scene_loom=${token}; HttpOnly; SameSite=Strict; Path=/`,
-    );
+  app.get('/api/session', async (req, reply) => {
+    const cookies = [`scene_loom=${token}; HttpOnly; SameSite=Strict; Path=/`];
+    // Requests carrying an Authorization header follow the CLI path and never
+    // receive the owner cookie.
+    if (!req.headers.authorization)
+      cookies.push(
+        `scene_loom_owner=${ownerSecret}; HttpOnly; SameSite=Strict; Path=/`,
+      );
+    reply.header('Set-Cookie', cookies);
     return ok({ token });
   });
   app.get('/api/agent-info', async () =>
@@ -147,6 +165,111 @@ export async function createApp(options: {
     if (!scene) fail('NOT_FOUND', 'Scene does not exist.', 404);
     return ok(await acceptancePreview(project, scene));
   });
+  const sceneOf = async (req: { params: unknown }) => {
+    const { id, sceneId } = req.params as { id: string; sceneId: string };
+    const project = await store.read(id);
+    if (!project.meshFoundryEnabled)
+      fail(
+        'HANDOFF_DISABLED',
+        'Enable Mesh Foundry handoff for this storyboard.',
+        403,
+      );
+    const scene = project.scenes.find((scene) => scene.id === sceneId);
+    if (!scene) fail('NOT_FOUND', 'Scene does not exist.', 404);
+    return { project, scene };
+  };
+  // Current acceptance read live from Foundry, with the recorded snapshot as
+  // the fallback. Never an error when Foundry is unreachable.
+  app.get('/api/projects/:id/scenes/:sceneId/workflow', async (req) => {
+    const { project, scene } = await sceneOf(req);
+    return ok(await workflowStatus(project, scene));
+  });
+  // An owner-clicked card action is checked against freshly read state.
+  app.post('/api/projects/:id/scenes/:sceneId/card-action', async (req) => {
+    const { action } = z.object({ action: z.string().max(40) }).parse(req.body);
+    const { project, scene } = await sceneOf(req);
+    return ok(await checkCardAction(project, scene, action));
+  });
+  // The owner's authority over a required selection. Only the browser session
+  // may use it: it needs the owner cookie, which the CLI token cannot supply.
+  app.post(
+    '/api/projects/:id/scenes/:sceneId/owner-resolution',
+    async (req) => {
+      const ownerCookie =
+        /(?:^|;\s*)scene_loom_owner=([a-f0-9]+)/.exec(
+          req.headers.cookie ?? '',
+        )?.[1] ?? '';
+      if (
+        !req.headers.origin ||
+        req.headers.authorization ||
+        req.headers['sec-fetch-site'] === 'none' ||
+        !ownerEqual(ownerCookie)
+      )
+        fail(
+          'OWNER_ONLY',
+          'Only the owner can resolve a selection, from the Scene Loom card.',
+          403,
+        );
+      const body = z
+        .strictObject({
+          name: z.string().trim().min(1).max(8000),
+          source: Model.optional(),
+          reason: z.string().trim().min(1).max(8000).optional(),
+        })
+        .parse(req.body);
+      const { project, scene } = await sceneOf(req);
+      const state = orchestrationState(
+        scene.rehearsalEvents,
+        project.rehearsalInputRevision ?? project.contentRevision,
+      );
+      const entry = state.sync?.entries.find(
+        (item) => nameKey(item.name) === nameKey(body.name),
+      );
+      if (!state.sync || !state.current || !entry)
+        fail(
+          'STALE_REHEARSAL',
+          'This selection is not in the current manifest. Reload the card.',
+          409,
+        );
+      // Default to the revision the owner already pinned for this selection.
+      // The owner's own pin is used only if Foundry confirms it right now;
+      // otherwise this records a waiver without a source.
+      const source =
+        body.source ??
+        (entry.pinnedSource &&
+        (await sourceIsAccepted(entry.pinnedSource).catch(() => false))
+          ? entry.pinnedSource
+          : undefined);
+      const eventId = `owner-${randomUUID()}`;
+      return ok(
+        await store.apply({
+          schemaVersion: 1,
+          projectId: project.id,
+          requestId: eventId,
+          expectedContentRevision: project.contentRevision,
+          operations: [
+            {
+              type: 'rehearsal.record',
+              id: scene.id,
+              afterEventId: scene.rehearsalEvents?.at(-1)?.eventId ?? null,
+              event: {
+                kind: 'orchestration',
+                eventId,
+                record: {
+                  stage: 'owner-resolution',
+                  syncId: state.sync.eventId,
+                  name: entry.name,
+                  ...(source ? { source } : {}),
+                  prior: entry,
+                  ...(body.reason ? { reason: body.reason } : {}),
+                },
+              },
+            },
+          ],
+        }),
+      );
+    },
+  );
   app.post('/api/projects/:id/assets', async (req) => {
     // Local file import is a trusted CLI capability, never a browser capability.
     if (
@@ -170,12 +293,13 @@ export async function createApp(options: {
         (op) =>
           op.type === 'rehearsal.record' &&
           op.event.kind === 'orchestration' &&
-          op.event.record.stage === 'decision',
+          (op.event.record.stage === 'decision' ||
+            op.event.record.stage === 'owner-resolution'),
       )
     )
       fail(
         'OWNER_DECISION_REQUIRED',
-        'Plan decisions are retired. Agree to the plan in chat and save the plan.',
+        'Agents cannot record plan decisions or resolve selections for the owner. The owner resolves a selection from the Scene Loom card.',
         403,
       );
     return ok(

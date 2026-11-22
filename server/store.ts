@@ -21,8 +21,6 @@ import {
   sceneDevelopment,
   sliceProgress,
 } from '../shared/development.js';
-import { verifyFoundryAcceptance } from './foundry.js';
-import { workflowError } from '../shared/rehearsal.js';
 import { BaselineName } from '../shared/storyboard.js';
 import {
   Id,
@@ -868,32 +866,16 @@ export class Store extends EventEmitter {
             affected.add(op.id);
             continue;
           }
-          const error = workflowError(
-            events,
-            op.event,
-            p.rehearsalInputRevision ?? p.contentRevision,
-            !!scene.rehearsalBrief,
+          // The Rehearsal and Foundry fit loop is retired. Earlier records stay
+          // readable as history; nothing new is written in that shape.
+          fail(
+            'LEGACY_RECORD',
+            'Brief review, candidate, candidate review and fit records are retired. Record an orchestration event instead.',
+            409,
           );
-          if (error) fail('STALE_REHEARSAL', error, 409);
-          if (op.event.kind === 'candidate-review' && op.event.ownerOverride) {
-            const accepted = await verifyFoundryAcceptance(
-              op.event.model,
-            ).catch(() =>
-              fail(
-                'FOUNDRY_UNAVAILABLE',
-                'Could not verify current owner acceptance in Mesh Foundry.',
-                503,
-              ),
-            );
-            if (!accepted)
-              fail(
-                'FOUNDRY_NOT_ACCEPTED',
-                'Mesh Foundry must currently accept this exact eligible model revision.',
-                409,
-              );
-          }
-          events.push(op.event);
-          affected.add(op.id);
+        }
+        if (op.type === 'project.design-direction.set') {
+          next.designDirection = op.designDirection;
           continue;
         }
         if (op.type === 'project.vision.set') {

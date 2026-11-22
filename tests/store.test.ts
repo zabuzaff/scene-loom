@@ -347,7 +347,7 @@ test('service restricts host, origin, session and browser local-file imports', a
     headers: { host: '127.0.0.1:4318' },
   });
   assert.match(
-    session.headers['set-cookie'] as string,
+    [session.headers['set-cookie']].flat().join('\n'),
     /HttpOnly; SameSite=Strict/,
   );
   assert.equal(
@@ -1223,14 +1223,16 @@ test('legacy reset previews and appends one verified manifest without a snapshot
       { type: 'scene.create', scene: scene('hall') },
     ]),
   );
+  // A scene saved while the retired fit loop was active carries a legacy
+  // review. It is seeded into the saved project, since new ones are refused.
   const initial = await store.read('test');
   const review = {
     type: 'rehearsal.record' as const,
     id: 'room',
-    afterEventId: null,
+    afterEventId: 'legacy',
     event: {
       kind: 'review' as const,
-      eventId: 'legacy',
+      eventId: 'late',
       inputRevision: initial.rehearsalInputRevision!,
       imports: 'ready' as const,
       blockout: 'ready' as const,
@@ -1238,7 +1240,10 @@ test('legacy reset previews and appends one verified manifest without a snapshot
       findings: ['Ready'],
     },
   };
-  await store.apply(batch([review], initial.contentRevision, 'legacy'));
+  const savedPath = join(root, 'projects/test/project.json');
+  const saved = JSON.parse(await readFile(savedPath, 'utf8'));
+  saved.scenes[0].rehearsalEvents = [{ ...review.event, eventId: 'legacy' }];
+  await writeFile(savedPath, JSON.stringify(saved));
   const copy = await store.createStoryboard('test', {
     name: 'Separate storyboard',
   });
@@ -1344,14 +1349,13 @@ test('legacy reset previews and appends one verified manifest without a snapshot
           {
             ...review,
             afterEventId: 'corrected-sync',
-            event: { ...review.event, eventId: 'late' },
           },
         ],
         selected.contentRevision + 1,
         'late',
       ),
     ),
-    hasCode('STALE_REHEARSAL'),
+    hasCode('LEGACY_RECORD'),
   );
 });
 
@@ -1501,4 +1505,56 @@ test('plan then draft link needs no approval and rejects retired stages', async 
   await record('plan', 'draft', draft, await revision());
   const events = (await store.read('test')).scenes[0].rehearsalEvents!;
   assert.equal(events.at(-1)?.eventId, 'draft');
+});
+
+const direction = {
+  name: 'Signal Ledger',
+  summary: 'Dense ink-on-paper tables with one hot accent.',
+  palette: ['#101418 ink', '#f2efe6 paper', '#ff4f1f accent'],
+  typePairing: 'Space Grotesk headings, IBM Plex Mono data',
+  layoutIdea: 'Left rail index with a wide ledger column.',
+  sources: [
+    { url: 'https://example.com/ledger', observedTrait: 'Hairline rules' },
+  ],
+  rejectedAlternatives: ['Glassy dashboard: too close to the siblings.'],
+  chosenAt: '2026-11-22T10:00:00.000Z',
+};
+
+test('design direction is validated content written through apply; old projects load without it', async (t) => {
+  const { root, store, batch } = await fixture(t);
+  const file = join(root, 'projects/test/project.json');
+  // A project saved before the field existed still loads.
+  assert.equal((await store.read('test')).designDirection, undefined);
+  const set = (designDirection: object, revision = 0, id = 'dd1') =>
+    batch(
+      [{ type: 'project.design-direction.set', designDirection } as never],
+      revision,
+      id,
+    );
+  const before = await readFile(file, 'utf8');
+  await assert.rejects(store.apply(set({ ...direction, palette: [] })), /./);
+  await assert.rejects(
+    store.apply(
+      set({
+        ...direction,
+        sources: [{ url: 'javascript:alert(1)', observedTrait: 'x' }],
+      }),
+    ),
+    /./,
+  );
+  await assert.rejects(store.apply(set({ ...direction, extra: true })), /./);
+  assert.equal(await readFile(file, 'utf8'), before);
+  const dry = await store.apply(set(direction), true);
+  assert.equal(dry.dryRun, true);
+  assert.equal(await readFile(file, 'utf8'), before);
+  const result = await store.apply(set(direction));
+  assert.equal(result.contentRevision, 1);
+  const saved = await store.read('test');
+  assert.deepEqual(saved.designDirection, direction);
+  // Replacing it is another content revision; the rest is untouched.
+  await store.apply(set({ ...direction, name: 'Second pass' }, 1, 'dd2'));
+  const again = await store.read('test');
+  assert.equal(again.designDirection?.name, 'Second pass');
+  assert.equal(again.contentRevision, 2);
+  assert.equal(again.title, 'Test world');
 });

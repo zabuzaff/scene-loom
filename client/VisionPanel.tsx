@@ -18,6 +18,59 @@ const sections = [
   ['assumptions', 'Agent assumptions'],
   ['openQuestions', 'Open questions'],
 ] as const;
+function DesignDirectionSection({
+  direction,
+}: {
+  direction: NonNullable<ProjectData['designDirection']>;
+}) {
+  return (
+    <section className="design-direction" aria-label="Design direction">
+      <h3>Design direction</h3>
+      <p>
+        <strong>{direction.name}</strong>
+      </p>
+      <p>{direction.summary}</p>
+      <ul className="design-direction-palette">
+        {direction.palette.map((entry, index) => (
+          <li key={index}>{entry}</li>
+        ))}
+      </ul>
+      <p>Type: {direction.typePairing}</p>
+      <p>Layout: {direction.layoutIdea}</p>
+      {direction.sources.length > 0 && (
+        <ul>
+          {direction.sources.map((source, index) => (
+            <li key={index}>
+              <a href={source.url} target="_blank" rel="noreferrer">
+                {source.url}
+              </a>
+              <p>{source.observedTrait}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {direction.rejectedAlternatives.length > 0 && (
+        <details>
+          <summary>
+            {direction.rejectedAlternatives.length} rejected{' '}
+            {direction.rejectedAlternatives.length === 1
+              ? 'alternative'
+              : 'alternatives'}
+          </summary>
+          <ul>
+            {direction.rejectedAlternatives.map((entry, index) => (
+              <li key={index}>{entry}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <small>
+        Chosen {direction.chosenAt.slice(0, 10)} · written by the planning agent
+      </small>
+    </section>
+  );
+}
+
 export function VisionPanel({
   project,
   close,
@@ -61,6 +114,9 @@ export function VisionPanel({
         {vision ? 'Copy refine vision prompt' : 'Copy define vision prompt'}
         <ArrowUpRight size={16} />
       </button>
+      {project.designDirection && (
+        <DesignDirectionSection direction={project.designDirection} />
+      )}
       {!vision ? (
         <p>
           No vision yet. Develop one with your agent using your idea and any
